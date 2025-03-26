@@ -9,7 +9,7 @@ enabled = true
 [[d1_databases]]
 binding = "DB"
 database_name = "grid-trading-db"
-database_id = ""  # Will be filled after database creation
+database_id = "48d7ba4f-49ce-426e-bc90-41ffba86658f" 
 
 # Secrets to be added with wrangler:
 # wrangler secret put INTERNAL_SERVICE_KEY 
