@@ -1,19 +1,16 @@
 {
-	"name": "d1-worker",
-	"version": "0.0.0",
-	"private": true,
-	"scripts": {
-		"deploy": "wrangler deploy",
-		"dev": "wrangler dev",
-		"start": "wrangler dev",
-		"test": "vitest",
-		"cf-typegen": "wrangler types"
-	},
-	"devDependencies": {
-		"@cloudflare/vitest-pool-workers": "^0.7.5",
-		"@cloudflare/workers-types": "^4.20250321.0",
-		"typescript": "^5.5.2",
-		"vitest": "~3.0.7",
-		"wrangler": "^4.5.0"
-	}
+    "name": "d1-worker",
+    "version": "1.0.0",
+    "description": "Database service for cryptocurrency trading operations",
+    "main": "src/index.js",
+    "scripts": {
+        "dev": "wrangler dev",
+        "deploy": "wrangler deploy"
+    },
+    "dependencies": {
+        "@cloudflare/workers-types": "^4.20240320.1"
+    },
+    "devDependencies": {
+        "wrangler": "^4.4.0"
+    }
 }

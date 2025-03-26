@@ -1,0 +1,15 @@
+name = "d1-worker"
+main = "src/index.js"
+compatibility_date = "2024-03-26"
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "grid-trading-db"
+database_id = ""  # Will be filled after database creation
+
+# Secrets to be added with wrangler:
+# wrangler secret put INTERNAL_SERVICE_KEY 
