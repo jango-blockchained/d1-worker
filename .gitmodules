@@ -1,0 +1,3 @@
+[submodule "trade-worker"]
+	path = trade-worker
+	url = /home/jango/Dokumente/cryptolinx/Pine Script/grid/worker/trade-worker
