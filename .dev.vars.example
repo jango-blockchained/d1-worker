@@ -1,0 +1,6 @@
+# D1 Worker Environment Variables
+INTERNAL_SERVICE_KEY=your_internal_service_key_here
+
+# Note: This file provides example values for local development.
+# Copy this file to .dev.vars and replace with your actual values.
+# .dev.vars is ignored by git to prevent committing sensitive information. 

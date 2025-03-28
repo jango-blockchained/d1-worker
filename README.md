@@ -2,10 +2,12 @@
 
 A Cloudflare Worker service that provides a centralized database interface for other workers in the grid trading system. This worker manages the D1 database operations and provides a secure API for data access.
 
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/yourusername/grid-trading/tree/main/d1-worker)
+
 ## Features
 
 - Centralized database operations
-- Secure API with authentication
+- Secure API with authentication via internal service key
 - Support for single queries and batch operations
 - Error handling and logging
 - SQL injection prevention through parameterized queries
@@ -71,11 +73,38 @@ bun run deploy
 ```http
 POST /query
 Content-Type: application/json
-Authorization: Bearer your_internal_key
+X-Internal-Key: your_internal_key
+X-Request-ID: unique_request_id
 
 {
   "query": "SELECT * FROM trade_requests WHERE id = ?",
   "params": [123]
+}
+```
+
+#### Response Format (SELECT)
+
+```json
+{
+  "success": true,
+  "results": [
+    {
+      "id": 123,
+      "timestamp": "2024-03-26T12:00:00Z",
+      "method": "POST",
+      "path": "/trade"
+    }
+  ]
+}
+```
+
+#### Response Format (INSERT, UPDATE, DELETE)
+
+```json
+{
+  "success": true,
+  "lastRowId": 124,
+  "changes": 1
 }
 ```
 
@@ -84,7 +113,8 @@ Authorization: Bearer your_internal_key
 ```http
 POST /batch
 Content-Type: application/json
-Authorization: Bearer your_internal_key
+X-Internal-Key: your_internal_key
+X-Request-ID: unique_request_id
 
 {
   "statements": [
@@ -95,6 +125,27 @@ Authorization: Bearer your_internal_key
     {
       "query": "UPDATE trade_responses SET error = ? WHERE request_id = ?",
       "params": ["Connection timeout", 123]
+    }
+  ]
+}
+```
+
+#### Response Format (Batch)
+
+```json
+{
+  "success": true,
+  "results": [
+    {
+      "meta": {
+        "last_row_id": 124,
+        "changes": 1
+      }
+    },
+    {
+      "meta": {
+        "changes": 1
+      }
     }
   ]
 }
@@ -133,34 +184,25 @@ CREATE TABLE trade_responses (
 
 ## Security
 
-- All requests must include a valid Authorization header
+- All requests must include a valid X-Internal-Key header
+- All requests must include an X-Request-ID header
 - Parameterized queries to prevent SQL injection
 - Error messages don't expose database details
-- Internal service authentication
 
 ## Error Handling
 
-The worker includes comprehensive error handling for:
+The worker includes error handling for:
 - Authentication failures
 - Invalid SQL queries
 - Database connection issues
 - Parameter validation
 - Batch operation failures
 
-## Response Format
+## Error Response Format
 
-Success:
 ```json
 {
-  "results": [...],  // For SELECT queries
-  "lastRowId": 123,  // For INSERT operations
-  "changes": 1       // For UPDATE/DELETE operations
-}
-```
-
-Error:
-```json
-{
+  "success": false,
   "error": "Error message"
 }
 ```
