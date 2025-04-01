@@ -1,8 +1,8 @@
 # D1 Worker
 
-A Cloudflare Worker service that provides a centralized database interface for other workers in the grid trading system. This worker manages the D1 database operations and provides a secure API for data access.
+A Cloudflare Worker service that provides a centralized database interface for other workers in the hoox trading system. This worker manages the D1 database operations and provides a secure API for data access.
 
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/yourusername/grid-trading/tree/main/d1-worker)
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/yourusername/hoox-trading/tree/main/d1-worker)
 
 ## Features
 
@@ -28,7 +28,7 @@ bun install
 
 2. Create a D1 database:
 ```bash
-wrangler d1 create grid-trading-db
+wrangler d1 create hoox-trading-db
 ```
 
 3. Update the database_id in `wrangler.toml` with the ID from the previous command.

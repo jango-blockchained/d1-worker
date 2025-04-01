@@ -1,5 +1,5 @@
 /**
- * D1 Worker for Grid Trading Database Operations
+ * D1 Worker for Hoox Trading Database Operations
  */
 // ES Module format requires a default export
 export default {
