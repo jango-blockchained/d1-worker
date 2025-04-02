@@ -33,12 +33,19 @@ wrangler d1 create hoox-trading-db
 
 3. Update the database_id in `wrangler.toml` with the ID from the previous command.
 
-4. Configure environment variables in `.dev.vars` for local development:
+4. Set your Cloudflare account ID in `wrangler.toml`:
+```toml
+name = "d1-worker"
+account_id = "your_account_id_here"
+main = "src/index.js"
+```
+
+5. Configure environment variables in `.dev.vars` for local development:
 ```env
 INTERNAL_SERVICE_KEY=your_internal_key
 ```
 
-5. Configure production secrets:
+6. Configure production secrets:
 ```bash
 wrangler secret put INTERNAL_SERVICE_KEY
 ```
