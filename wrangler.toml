@@ -1,5 +1,5 @@
 name = "d1-worker"
-account_id = "debc6545e63bea36be059cbc82d80ec8"
+account_id = "profile"
 main = "src/index.js"
 compatibility_date = "2024-03-26"
 compatibility_flags = ["nodejs_compat"]
@@ -10,7 +10,7 @@ enabled = true
 [[d1_databases]]
 binding = "DB"
 database_name = "hoox-trading-db"
-database_id = "│" 
+database_id = "YOUR_DATABASE_ID_HERE" # Make sure to replace this placeholder
 
 # Secrets to be added with wrangler:
 # wrangler secret put INTERNAL_SERVICE_KEY 
