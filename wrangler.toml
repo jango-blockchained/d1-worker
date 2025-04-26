@@ -12,5 +12,11 @@ binding = "DB"
 database_name = "hoox-trading-db"
 database_id = "YOUR_DATABASE_ID_HERE" # Make sure to replace this placeholder
 
-# Secrets to be added with wrangler:
-# wrangler secret put INTERNAL_SERVICE_KEY 
+# Secrets managed via Cloudflare Secrets Store
+secrets_store_secrets = [
+  { binding = "INTERNAL_SERVICE_KEY_SECRET", store_id = "<YOUR_STORE_ID>", secret_name = "D1_INTERNAL_SERVICE_KEY" }
+]
+
+# Remove old comments
+# # Secrets to be added with wrangler:
+# # wrangler secret put INTERNAL_SERVICE_KEY 

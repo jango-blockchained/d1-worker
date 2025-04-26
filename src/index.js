@@ -12,14 +12,20 @@ export default {
 async function handleRequest(request, env) {
     try {
         // Verify internal service key
-        const internalKey = request.headers.get('X-Internal-Key');
+        const internalKeyHeader = request.headers.get('X-Internal-Key');
         const requestId = request.headers.get('X-Request-ID');
 
-        if (!internalKey || internalKey !== env.INTERNAL_SERVICE_KEY || !requestId) {
-            return new Response(JSON.stringify({
-                success: false,
-                error: 'Unauthorized'
-            }), { status: 403 });
+        // Get the expected key from Secrets Store
+        const expectedInternalKey = await env.INTERNAL_SERVICE_KEY_SECRET?.get();
+
+        if (!expectedInternalKey) {
+            console.error('INTERNAL_SERVICE_KEY_SECRET binding not configured or accessible.');
+            return new Response(JSON.stringify({ success: false, error: 'Service configuration error' }), { status: 500 });
+        }
+
+        if (!internalKeyHeader || internalKeyHeader !== expectedInternalKey || !requestId) {
+            console.warn('Unauthorized attempt blocked.');
+            return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), { status: 403 });
         }
 
         const url = new URL(request.url);
