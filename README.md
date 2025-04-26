@@ -22,11 +22,13 @@ A Cloudflare Worker service that provides a centralized database interface for o
 ## Setup
 
 1. Install dependencies:
+
 ```bash
 bun install
 ```
 
 2. Create a D1 database:
+
 ```bash
 wrangler d1 create hoox-trading-db
 ```
@@ -34,6 +36,7 @@ wrangler d1 create hoox-trading-db
 3. Update the database_id in `wrangler.toml` with the ID from the previous command.
 
 4. Set your Cloudflare account ID in `wrangler.toml`:
+
 ```toml
 name = "d1-worker"
 account_id = "your_account_id_here"
@@ -41,11 +44,13 @@ main = "src/index.js"
 ```
 
 5. Configure environment variables in `.dev.vars` for local development:
+
 ```env
 INTERNAL_SERVICE_KEY=your_internal_key
 ```
 
 6. Configure production secrets:
+
 ```bash
 wrangler secret put INTERNAL_SERVICE_KEY
 ```
@@ -69,6 +74,7 @@ The worker uses environment variables from `.dev.vars` during local development 
 ### Production Deployment
 
 Deploy to production:
+
 ```bash
 bun run deploy
 ```
@@ -161,6 +167,7 @@ X-Request-ID: unique_request_id
 ## Database Schema
 
 ### Trade Requests Table
+
 ```sql
 CREATE TABLE trade_requests (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -175,6 +182,7 @@ CREATE TABLE trade_requests (
 ```
 
 ### Trade Responses Table
+
 ```sql
 CREATE TABLE trade_responses (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -199,6 +207,7 @@ CREATE TABLE trade_responses (
 ## Error Handling
 
 The worker includes error handling for:
+
 - Authentication failures
 - Invalid SQL queries
 - Database connection issues
@@ -220,4 +229,4 @@ The worker includes error handling for:
 2. Create your feature branch
 3. Commit your changes
 4. Push to the branch
-5. Create a new Pull Request 
+5. Create a new Pull Request
