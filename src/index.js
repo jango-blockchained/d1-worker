@@ -1,6 +1,8 @@
 /**
  * D1 Worker for Hoox Trading Database Operations
  */
+import { verifyInternalService } from "../../shared/utils.js"; // Import the function
+
 // ES Module format requires a default export
 export default {
   async fetch(request, env) {
@@ -47,7 +49,7 @@ async function handleRequest(request, env) {
 
     // Route handling
     switch (path) {
-      case "/query":
+      case "/query": {
         if (request.method !== "POST") {
           return new Response(
             JSON.stringify({
@@ -94,8 +96,9 @@ async function handleRequest(request, env) {
             }
           );
         }
+      }
 
-      case "/batch":
+      case "/batch": {
         if (request.method !== "POST") {
           return new Response(
             JSON.stringify({
@@ -121,8 +124,9 @@ async function handleRequest(request, env) {
             headers: { "Content-Type": "application/json" },
           }
         );
+      }
 
-      default:
+      default: {
         return new Response(
           JSON.stringify({
             success: false,
@@ -130,6 +134,7 @@ async function handleRequest(request, env) {
           }),
           { status: 404 }
         );
+      }
     }
   } catch (error) {
     console.error("Error:", error);
@@ -142,6 +147,84 @@ async function handleRequest(request, env) {
         status: 500,
         headers: { "Content-Type": "application/json" },
       }
+    );
+  }
+}
+
+/**
+ * Handle database actions based on request data
+ * @param {object} data - Request body data
+ * @param {D1Database} db - D1 Database binding
+ * @returns {Promise<any>} Results from the database operation
+ */
+async function handleDatabaseAction(data, db) {
+  const { action } = data;
+  let results;
+
+  switch (action) {
+    case "SELECT": {
+      const { statement, params } = data;
+      results = await db
+        .prepare(statement)
+        .bind(...params)
+        .all();
+      break;
+    }
+    case "EXEC": {
+      const { statement, params } = data;
+      results = await db
+        .prepare(statement)
+        .bind(...params)
+        .run();
+      break;
+    }
+    default:
+      throw new Error(`Unsupported action: ${action}`);
+  }
+
+  return results;
+}
+
+/**
+ * Fetch handler for the Worker
+ * @param {Request} request
+ * @param {Env} env
+ * @param {ExecutionContext} ctx
+ * @returns {Promise<Response>}
+ */
+async function _handleFetch(request, env, _ctx) {
+  // Prefix ctx
+  // Verify internal service authentication
+  const authResponse = verifyInternalService(request, env);
+  if (authResponse) {
+    return authResponse;
+  }
+
+  const { method } = request;
+
+  try {
+    switch (method) {
+      case "GET": {
+        const { pathname } = new URL(request.url);
+        return new Response(`GET request received at ${pathname}`);
+      }
+      case "POST": {
+        let body = await request.json();
+        const results = await handleDatabaseAction(body, env.DB);
+        return Response.json({ success: true, results });
+      }
+      default: {
+        return new Response("Method Not Allowed", { status: 405 });
+      }
+    }
+  } catch (e) {
+    console.error("Error handling request:", e);
+    return Response.json(
+      {
+        success: false,
+        error: e.message || "Internal Server Error",
+      },
+      { status: 500 }
     );
   }
 }
