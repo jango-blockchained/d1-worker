@@ -1,7 +1,7 @@
 /**
  * D1 Worker for Hoox Trading Database Operations
  */
-import { verifyInternalService } from "../../shared/utils.js"; // Import the function
+import { verifyInternalService } from "@shared/utils.js"; // Use path alias
 
 // ES Module format requires a default export
 export default {
