@@ -1,0 +1,35 @@
+{
+  "compilerOptions": {
+    /* Base Options */
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "target": "es2020",
+    "allowJs": false,
+    "resolveJsonModule": true,
+    "moduleDetection": "force",
+
+    /* Strictness */
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitAny": true, // Consider changing if 'any' is needed for D1 params
+    "strictNullChecks": true,
+
+    /* Bundler Behavior */
+    "moduleResolution": "bundler",
+    "module": "esnext",
+    "noEmit": true,
+    "isolatedModules": true,
+
+    /* Cloudflare Workers Types */
+    "types": ["@cloudflare/workers-types"],
+    "lib": ["es2020", "webworker"],
+
+    /* Path Aliases (Optional - example for shared utils) */
+    // "baseUrl": ".", 
+    // "paths": {
+    //   "@shared/*": ["../../shared/*"] // Adjust path based on actual structure
+    // }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+} 

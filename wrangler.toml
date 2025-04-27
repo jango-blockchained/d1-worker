@@ -1,6 +1,6 @@
 name = "d1-worker"
 account_id = "profile"
-main = "src/index.js"
+main = "src/index.ts"
 compatibility_date = "2024-03-26"
 compatibility_flags = ["nodejs_compat"]
 
@@ -13,9 +13,7 @@ database_name = "hoox-trading-db"
 database_id = "YOUR_DATABASE_ID_HERE" # Make sure to replace this placeholder
 
 # Secrets managed via Cloudflare Secrets Store
-secrets_store_secrets = [
-  { binding = "INTERNAL_SERVICE_KEY_SECRET", store_id = "<YOUR_STORE_ID>", secret_name = "D1_INTERNAL_SERVICE_KEY" }
-]
+secrets_store_secrets = [] # Or remove the whole key if no other secrets
 
 # Remove old comments
 # # Secrets to be added with wrangler:
