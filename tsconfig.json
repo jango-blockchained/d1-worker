@@ -1,35 +1,22 @@
 {
   "compilerOptions": {
-    /* Base Options */
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022"],
+    "jsx": "react-jsx",
+    "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "target": "es2020",
-    "allowJs": false,
+    "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "moduleDetection": "force",
-
-    /* Strictness */
-    "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "noImplicitAny": true, // Consider changing if 'any' is needed for D1 params
-    "strictNullChecks": true,
-
-    /* Bundler Behavior */
-    "moduleResolution": "bundler",
-    "module": "esnext",
+    "allowJs": true,
+    "checkJs": false,
     "noEmit": true,
     "isolatedModules": true,
-
-    /* Cloudflare Workers Types */
-    "types": ["@cloudflare/workers-types"],
-    "lib": ["es2020", "webworker"],
-
-    /* Path Aliases (Optional - example for shared utils) */
-    // "baseUrl": ".", 
-    // "paths": {
-    //   "@shared/*": ["../../shared/*"] // Adjust path based on actual structure
-    // }
+    "types": [],
+    "rootDir": "./src"
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "test"]
 } 

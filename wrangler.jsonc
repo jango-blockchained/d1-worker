@@ -1,0 +1,20 @@
+{
+  "name": "d1-worker",
+  "account_id": "profile", // Assuming this is correct, keep if needed or remove if default
+  "main": "src/index.ts",
+  "compatibility_date": "2025-03-07", // Standardized
+  "compatibility_flags": ["nodejs_compat"], // Standardized
+  "observability": { // Standardized
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "hoox-trading-db",
+      "database_id": "YOUR_DATABASE_ID_HERE" // Keep placeholder, user needs to fill this
+    }
+  ]
+  // Note: Removed secrets_store_secrets as it was empty. Add back if needed.
+  // Note: Removed comments about wrangler secret put
+} 
