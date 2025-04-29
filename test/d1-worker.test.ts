@@ -7,6 +7,8 @@ describe("D1 Worker", () => {
     bind: mock(() => mockPreparedStatement),
     run: mock(() =>
       Promise.resolve({
+        success: true,
+        error: null,
         meta: {
           last_row_id: 123,
           changes: 1,
@@ -15,6 +17,8 @@ describe("D1 Worker", () => {
     ),
     all: mock(() =>
       Promise.resolve({
+        success: true,
+        error: null,
         results: [{ id: 1, name: "test" }],
       })
     ),
@@ -23,14 +27,12 @@ describe("D1 Worker", () => {
   // Mock D1 database
   const mockDB = {
     prepare: mock(() => mockPreparedStatement),
-    batch: mock((statements) => ({
-      run: mock(() =>
-        Promise.resolve([
-          { meta: { last_row_id: 123, changes: 1 } },
-          { meta: { changes: 1 } },
-        ])
-      ),
-    })),
+    batch: mock((statements) =>
+      Promise.resolve([
+        { success: true, error: null, meta: { last_row_id: 123, changes: 1 } },
+        { success: true, error: null, meta: { changes: 1 } },
+      ])
+    ),
   };
 
   // Mock environment setup function - remove internal key secret
