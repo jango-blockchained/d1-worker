@@ -1,79 +1,91 @@
 # D1 Worker
 
-A Cloudflare Worker service that provides a centralized database interface for other workers in the hoox trading system. This worker manages the D1 database operations and provides a secure API for data access.
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![Runtime](https://img.shields.io/badge/Runtime-Bun-black?logo=bun)](https://bun.sh) [![Platform](https://img.shields.io/badge/Platform-Cloudflare%20Edge%20Workers-orange?logo=cloudflare)](https://workers.cloudflare.com/) [![License](https://img.shields.io/badge/License-CC%20BY%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by/4.0/) [![Build Status](https://img.shields.io/badge/Build-TODO-lightgrey?style=for-the-badge)](https://github.com/jango-blockchained/hoox-cf-edge-worker/actions) <!-- TODO: Update Build Status link -->
 
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/yourusername/hoox-trading/tree/main/d1-worker)
+**[Main Repository](https://github.com/jango-blockchained/hoox-cf-edge-worker)** <!-- TODO: Update Main Repo link -->
+
+An example Cloudflare Worker service demonstrating interaction with a Cloudflare D1 database. In the main Hoox project, workers typically interact with D1 directly using bindings configured in their `wrangler.jsonc` files, but this serves as a standalone example.
 
 ## Features
 
-- Centralized database operations
-- Secure API with authentication via internal service key
-- Support for single queries and batch operations
-- Error handling and logging
-- SQL injection prevention through parameterized queries
+- Demonstrates basic D1 database operations (querying, inserting).
+- Uses parameterized queries for security.
 
 ## Prerequisites
 
 - Node.js >= 16
-- Bun (for package management)
+- Bun
 - Wrangler CLI
-- Cloudflare Workers account with D1 database access
+- Cloudflare Workers account with D1 database access enabled.
 
 ## Setup
 
 1. Install dependencies:
-
-```bash
-bun install
-```
-
-2. Create a D1 database:
-
-```bash
-wrangler d1 create hoox-trading-db
-```
-
-3. Update the database_id in `wrangler.toml` with the ID from the previous command.
-
-4. Set your Cloudflare account ID in `wrangler.toml`:
-
-```toml
-name = "d1-worker"
-account_id = "your_account_id_here"
-main = "src/index.js"
-```
-
-5. Configure environment variables in `.dev.vars` for local development:
-
-```env
-INTERNAL_SERVICE_KEY=your_internal_key
-```
-
-6. Configure production secrets:
-
-```bash
-wrangler secret put INTERNAL_SERVICE_KEY
-```
+    ```bash
+    bun install
+    ```
+2. Create a D1 database (if you haven't already):
+    ```bash
+    npx wrangler d1 create my-d1-database-example
+    ```
+3. Update `wrangler.jsonc` with your Cloudflare Account ID and the D1 Database ID:
+    ```jsonc
+    {
+      "name": "d1-worker-example",
+      "main": "src/index.ts", // Ensure this points to your entry file
+      "compatibility_date": "2025-03-07",
+      "compatibility_flags": ["nodejs_compat"],
+      "account_id": "YOUR_CLOUDFLARE_ACCOUNT_ID",
+      "d1_databases": [
+        {
+          "binding": "DB", // How you'll access it in your code (e.g., env.DB)
+          "database_name": "my-d1-database-example",
+          "database_id": "YOUR_D1_DATABASE_ID" // Get this from the 'wrangler d1 create' output
+        }
+      ],
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1
+       }
+      // Add any necessary vars or secrets if your example requires them
+    }
+    ```
+4. Update the corresponding `worker-configuration.d.ts` file.
+5. Create a schema file (e.g., `schema.sql`) and apply it:
+    ```sql
+    -- schema.sql Example
+    DROP TABLE IF EXISTS ExampleData;
+    CREATE TABLE ExampleData (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        value REAL,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    ```
+    ```bash
+    npx wrangler d1 execute my-d1-database-example --file=./schema.sql
+    ```
+6. For local development using a local D1 database, add `--local` to the `wrangler dev` command and run the `wrangler d1 execute` command with `--local` as well.
+    ```bash
+    # Apply schema locally
+    npx wrangler d1 execute my-d1-database-example --file=./schema.sql --local
+    # Run locally
+    bun run dev --local
+    ```
 
 ## Development
 
-### Local Development
-
-For local development, this worker should run on port 8787:
+Run locally:
 
 ```bash
 # Use a local D1 database for development
-bun run dev -- --port 8787 --local
+bun run dev --local
 
-# Or connect to your actual Cloudflare D1 database (charges apply)
-bun run dev -- --port 8787
+# Or connect to your actual Cloudflare D1 database (charges may apply)
+bun run dev
 ```
 
-The worker uses environment variables from `.dev.vars` during local development instead of the values in `wrangler.toml` or Cloudflare secrets.
-
-### Production Deployment
-
-Deploy to production:
+Deploy:
 
 ```bash
 bun run deploy
@@ -81,147 +93,29 @@ bun run deploy
 
 ## API Usage
 
-### Single Query
+This example worker might expose simple endpoints (e.g., `/`, `/insert`, `/list`) to demonstrate D1 interaction. Refer to the worker's source code (`src/index.ts`) for specific endpoints and expected request/response formats.
+
+Example (Conceptual):
 
 ```http
-POST /query
+# Fetch data
+GET /
+
+# Insert data
+POST /insert
 Content-Type: application/json
-X-Internal-Key: your_internal_key
-X-Request-ID: unique_request_id
 
 {
-  "query": "SELECT * FROM trade_requests WHERE id = ?",
-  "params": [123]
+  "name": "Test Item",
+  "value": 123.45
 }
-```
-
-#### Response Format (SELECT)
-
-```json
-{
-  "success": true,
-  "results": [
-    {
-      "id": 123,
-      "timestamp": "2024-03-26T12:00:00Z",
-      "method": "POST",
-      "path": "/trade"
-    }
-  ]
-}
-```
-
-#### Response Format (INSERT, UPDATE, DELETE)
-
-```json
-{
-  "success": true,
-  "lastRowId": 124,
-  "changes": 1
-}
-```
-
-### Batch Operations
-
-```http
-POST /batch
-Content-Type: application/json
-X-Internal-Key: your_internal_key
-X-Request-ID: unique_request_id
-
-{
-  "statements": [
-    {
-      "query": "INSERT INTO trade_requests (method, path) VALUES (?, ?)",
-      "params": ["POST", "/trade"]
-    },
-    {
-      "query": "UPDATE trade_responses SET error = ? WHERE request_id = ?",
-      "params": ["Connection timeout", 123]
-    }
-  ]
-}
-```
-
-#### Response Format (Batch)
-
-```json
-{
-  "success": true,
-  "results": [
-    {
-      "meta": {
-        "last_row_id": 124,
-        "changes": 1
-      }
-    },
-    {
-      "meta": {
-        "changes": 1
-      }
-    }
-  ]
-}
-```
-
-## Database Schema
-
-### Trade Requests Table
-
-```sql
-CREATE TABLE trade_requests (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-    method TEXT NOT NULL,
-    path TEXT NOT NULL,
-    headers TEXT,
-    body TEXT,
-    source_ip TEXT,
-    user_agent TEXT
-);
-```
-
-### Trade Responses Table
-
-```sql
-CREATE TABLE trade_responses (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    request_id INTEGER,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-    status_code INTEGER,
-    headers TEXT,
-    body TEXT,
-    error TEXT,
-    execution_time_ms INTEGER,
-    FOREIGN KEY (request_id) REFERENCES trade_requests(id)
-);
 ```
 
 ## Security
 
-- All requests must include a valid X-Internal-Key header
-- All requests must include an X-Request-ID header
-- Parameterized queries to prevent SQL injection
-- Error messages don't expose database details
-
-## Error Handling
-
-The worker includes error handling for:
-
-- Authentication failures
-- Invalid SQL queries
-- Database connection issues
-- Parameter validation
-- Batch operation failures
-
-## Error Response Format
-
-```json
-{
-  "success": false,
-  "error": "Error message"
-}
-```
+- Use parameterized queries (`env.DB.prepare(...)`) to prevent SQL injection.
+- Avoid exposing sensitive database details in error messages.
+- If exposing endpoints publicly, add authentication/authorization.
 
 ## Contributing
 
