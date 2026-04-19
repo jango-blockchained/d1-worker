@@ -11,8 +11,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "hoox-trading-db",
-      "database_id": "YOUR_DATABASE_ID_HERE" // Keep placeholder, user needs to fill this
+      "database_name": "trade-data-db",
+      "database_id": "a682f084-594e-4bd8-be2d-40ea5f8cf42e"
     }
   ]
   // Note: Removed secrets_store_secrets as it was empty. Add back if needed.
