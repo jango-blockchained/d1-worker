@@ -112,6 +112,47 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
         }
       }
 
+      case "/api/dashboard/stats": {
+        if (request.method !== "GET") return createJsonResponse({ success: false, error: "Method Not Allowed" }, 405);
+        try {
+          const totalTrades = await env.DB.prepare("SELECT COUNT(*) as count FROM trades").first("count");
+          const openPositions = await env.DB.prepare("SELECT COUNT(*) as count FROM positions WHERE status = 'OPEN'").first("count");
+          const recentActivityData = await env.DB.prepare("SELECT * FROM trades ORDER BY timestamp DESC LIMIT 10").all();
+          
+          return new Response(JSON.stringify({
+             success: true, 
+             stats: {
+                totalTrades: totalTrades || 0,
+                openPositions: openPositions || 0,
+                winRate: "N/A",
+             },
+             recentActivity: recentActivityData.results || []
+          }), { status: 200, headers: { "Content-Type": "application/json" } });
+        } catch (e: any) {
+          return createJsonResponse({ success: false, error: e.message }, 500);
+        }
+      }
+
+      case "/api/dashboard/positions": {
+        if (request.method !== "GET") return createJsonResponse({ success: false, error: "Method Not Allowed" }, 405);
+        try {
+          const positionsData = await env.DB.prepare("SELECT * FROM positions WHERE status = 'OPEN' ORDER BY updated_at DESC").all();
+          return new Response(JSON.stringify({ success: true, positions: positionsData.results || [] }), { status: 200, headers: { "Content-Type": "application/json" } });
+        } catch (e: any) {
+          return createJsonResponse({ success: false, error: e.message }, 500);
+        }
+      }
+
+      case "/api/dashboard/logs": {
+        if (request.method !== "GET") return createJsonResponse({ success: false, error: "Method Not Allowed" }, 405);
+        try {
+          const logsData = await env.DB.prepare("SELECT * FROM system_logs ORDER BY timestamp DESC LIMIT 50").all();
+          return new Response(JSON.stringify({ success: true, logs: logsData.results || [] }), { status: 200, headers: { "Content-Type": "application/json" } });
+        } catch (e: any) {
+          return createJsonResponse({ success: false, error: e.message }, 500);
+        }
+      }
+
       case "/batch": {
         if (request.method !== "POST") {
           return createJsonResponse({ success: false, error: "Method Not Allowed" }, 405);
