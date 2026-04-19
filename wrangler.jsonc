@@ -1,6 +1,5 @@
 {
   "name": "d1-worker",
-  "account_id": "profile", // Assuming this is correct, keep if needed or remove if default
   "main": "src/index.ts",
   "compatibility_date": "2025-03-07", // Standardized
   "compatibility_flags": ["nodejs_compat"], // Standardized
