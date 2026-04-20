@@ -2,11 +2,11 @@
 
 **Last Updated:** April 2026
 
-[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescript-lang.org/) [![Runtime](https://img.shields.io/badge/Runtime-Bun-black?logo=bun)](https://bun.sh) [![Platform](https://img.shields.io/badge/Platform-Cloudflare%20Edge%20Workers-orange?logo=cloudflare)](https://workers.cloudflare.com/) [![License](https://img.shields.io/badge/License-CC%20BY%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by/4.0/) [![Build Status](https://img.shields.io/badge/Build-TODO-lightgrey?style=for-the-badge)](https://github.com/jango-blockchained/hoox-setup/actions) 
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescript-lang.org/) [![Runtime](https://img.shields.io/badge/Runtime-Bun-black?logo=bun)](https://bun.sh) [![Platform](https://img.shields.io/badge/Platform-Cloudflare®%20Edge%20Workers-orange?logo=cloudflare)](https://workers.cloudflare.com/) [![License](https://img.shields.io/badge/License-CC%20BY%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by/4.0/) [![Build Status](https://img.shields.io/badge/Build-TODO-lightgrey?style=for-the-badge)](https://github.com/jango-blockchained/hoox-setup/actions) 
 
 **[Main Repository](https://github.com/jango-blockchained/hoox-setup)** 
 
-An example Cloudflare Worker service demonstrating interaction with a Cloudflare D1 database. In the main Hoox project, workers typically interact with D1 directly using bindings configured in their `wrangler.jsonc` files, but this serves as a standalone example.
+An example Cloudflare® Worker service demonstrating interaction with a Cloudflare® D1 database. In the main Hoox project, workers typically interact with D1 directly using bindings configured in their `wrangler.jsonc` files, but this serves as a standalone example.
 
 ## Features
 
@@ -18,7 +18,7 @@ An example Cloudflare Worker service demonstrating interaction with a Cloudflare
 - Node.js >= 16
 - Bun
 - Wrangler CLI
-- Cloudflare Workers account with D1 database access enabled.
+- Cloudflare® Workers account with D1 database access enabled.
 
 ## Setup
 
@@ -30,7 +30,7 @@ An example Cloudflare Worker service demonstrating interaction with a Cloudflare
     ```bash
     npx wrangler d1 create my-d1-database-example
     ```
-3. Update `wrangler.jsonc` with your Cloudflare Account ID and the D1 Database ID:
+3. Update `wrangler.jsonc` with your Cloudflare® Account ID and the D1 Database ID:
     ```jsonc
     {
       "name": "d1-worker-example",
@@ -83,7 +83,7 @@ Run locally:
 # Use a local D1 database for development
 bun run dev --local
 
-# Or connect to your actual Cloudflare D1 database (charges may apply)
+# Or connect to your actual Cloudflare® D1 database (charges may apply)
 bun run dev
 ```
 
@@ -126,3 +126,8 @@ Content-Type: application/json
 3. Commit your changes
 4. Push to the branch
 5. Create a new Pull Request
+
+
+---
+
+*Cloudflare® and the Cloudflare logo are trademarks and/or registered trademarks of Cloudflare, Inc. in the United States and other jurisdictions.*
