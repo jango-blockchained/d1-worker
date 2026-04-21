@@ -35,15 +35,21 @@ describe("D1 Worker", () => {
     ),
   };
 
-  // Mock environment setup function - remove internal key secret
-  const createMockEnv = () => ({
-    // INTERNAL_SERVICE_KEY_SECRET is no longer used
+  const TEST_INTERNAL_KEY = "test-internal-key";
+
+  // Mock secret binding for internal key
+  const mockSecretBinding = {
+    get: mock(() => Promise.resolve(TEST_INTERNAL_KEY)),
+  };
+
+  // Mock environment setup function - with internal key secret
+  const createMockEnv = (withKey = true) => ({
     DB: mockDB,
+    D1_INTERNAL_KEY: withKey ? mockSecretBinding : undefined,
   });
 
   // Mock environment used in tests (instantiated per test)
   let mockEnv: ReturnType<typeof createMockEnv>;
-  // TEST_INTERNAL_KEY is no longer needed
 
   beforeEach(() => {
     // Reset DB mocks before each test
@@ -73,28 +79,91 @@ describe("D1 Worker", () => {
   };
 
   // Remove tests related to internal service key validation
-  /*
-  test("validates internal service key", async () => {
-    // ... removed ...
+  test("allows request when internal auth key is provided", async () => {
+    const request = new Request("https://d1-worker.workers.dev/query", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
+      },
+      body: JSON.stringify({
+        query: "SELECT * FROM trade_requests",
+        params: [],
+      }),
+    });
+
+    const response = await d1Worker.fetch(request, mockEnv);
+    expect(response.status).toBe(200);
+
+    const responseData = await response.json();
+    expect(responseData.success).toBe(true);
   });
 
-  test("rejects request if header key doesn't match retrieved secret", async () => {
-     // ... removed ...
+  test("rejects request when internal auth key is missing", async () => {
+    const request = new Request("https://d1-worker.workers.dev/query", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query: "SELECT * FROM trade_requests",
+        params: [],
+      }),
+    });
+
+    const response = await d1Worker.fetch(request, mockEnv);
+    expect(response.status).toBe(401);
+
+    const responseData = await response.json();
+    expect(responseData.success).toBe(false);
   });
 
-  test("validates request ID", async () => {
-    // ... removed ...
+  test("rejects request when internal auth key is invalid", async () => {
+    const request = new Request("https://d1-worker.workers.dev/query", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Auth-Key": "wrong-key",
+      },
+      body: JSON.stringify({
+        query: "SELECT * FROM trade_requests",
+        params: [],
+      }),
+    });
+
+    const response = await d1Worker.fetch(request, mockEnv);
+    expect(response.status).toBe(401);
+
+    const responseData = await response.json();
+    expect(responseData.success).toBe(false);
   });
-  */
+
+  test("allows requests when no internal key is configured", async () => {
+    const envWithoutKey = createMockEnv(false);
+    const request = new Request("https://d1-worker.workers.dev/query", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query: "SELECT * FROM trade_requests",
+        params: [],
+      }),
+    });
+
+    const response = await d1Worker.fetch(request, envWithoutKey);
+    expect(response.status).toBe(200);
+
+    const responseData = await response.json();
+    expect(responseData.success).toBe(true);
+  });
 
   test("returns 404 for unknown endpoint", async () => {
     const request = new Request("https://d1-worker.workers.dev/unknown", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        // No auth headers needed now
-        // "X-Internal-Key": "test-internal-key",
-        // "X-Request-ID": "test-request-id",
+        "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
       },
       body: JSON.stringify(validQueryRequest),
     });
@@ -108,7 +177,7 @@ describe("D1 Worker", () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        // No auth headers needed
+        "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
       },
       body: JSON.stringify({
         query: "SELECT * FROM trade_requests",
@@ -118,7 +187,6 @@ describe("D1 Worker", () => {
 
     const response = await d1Worker.fetch(request, mockEnv);
     expect(response.status).toBe(200);
-    // expect(mockEnv.INTERNAL_SERVICE_KEY_SECRET.get).toHaveBeenCalledTimes(1);
 
     const responseData = await response.json();
     expect(responseData.success).toBe(true);
@@ -130,7 +198,7 @@ describe("D1 Worker", () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-         // No auth headers needed
+        "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
       },
       body: JSON.stringify({
         query: "INSERT INTO trade_requests (method, path) VALUES (?, ?)",
@@ -152,7 +220,7 @@ describe("D1 Worker", () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        // No auth headers needed
+        "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
       },
       body: JSON.stringify(validBatchRequest),
     });
@@ -170,7 +238,7 @@ describe("D1 Worker", () => {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
-        // No auth headers needed
+        "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
       },
     });
 
@@ -188,14 +256,13 @@ describe("D1 Worker", () => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        // No auth headers needed
+        "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
       },
       body: JSON.stringify(validQueryRequest),
     });
 
     const response = await d1Worker.fetch(request, mockEnv);
     expect(response.status).toBe(500);
-    // expect(mockEnv.INTERNAL_SERVICE_KEY_SECRET.get).toHaveBeenCalledTimes(1);
 
     const responseData = await response.json();
     expect(responseData.success).toBe(false);

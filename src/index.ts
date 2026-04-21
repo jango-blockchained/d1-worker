@@ -1,11 +1,11 @@
 import { log } from '@shared/utils';
-import type { D1Database, D1Result } from "@cloudflare/workers-types";
+import type { D1Database, D1Result, SecretBinding } from "@cloudflare/workers-types";
 
 // --- Type Definitions ---
 
 interface Env {
   DB: D1Database;
-  // Add other bindings/vars if needed (e.g., secrets if auth is re-added)
+  D1_INTERNAL_KEY?: SecretBinding;
 }
 
 interface QueryPayload {
@@ -54,7 +54,15 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
 
   console.log(`[${requestId}] D1 Worker received request: ${request.method} ${path}`);
 
-  // Authentication check was removed - re-add if calls can come from untrusted sources
+  // Internal authentication check
+  const internalKey = await env.D1_INTERNAL_KEY?.get();
+  if (internalKey) {
+    const providedKey = request.headers.get("X-Internal-Auth-Key");
+    if (!providedKey || providedKey !== internalKey) {
+      console.warn(`[${requestId}] Unauthorized request to ${path} - invalid or missing internal auth key`);
+      return createJsonResponse({ success: false, error: "Unauthorized" }, 401);
+    }
+  }
 
   try {
     // Basic path-based routing
