@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeEach, mock, jest } from "@jest/globals";
+import { describe, expect, test, beforeEach, mock, jest } from "bun:test";
 import d1Worker from "../src/index.js";
 
 describe("D1 Worker", () => {
