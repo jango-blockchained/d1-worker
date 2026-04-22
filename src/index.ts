@@ -1,10 +1,11 @@
 import { log } from '@shared/utils';
-import type { D1Database, D1Result, SecretBinding } from "@cloudflare/workers-types";
+import type { D1Database, D1Result, KVNamespace, SecretBinding } from "@cloudflare/workers-types";
 
 // --- Type Definitions ---
 
 interface Env {
   DB: D1Database;
+  CONFIG_KV: KVNamespace;
   D1_INTERNAL_KEY?: SecretBinding;
 }
 
@@ -160,6 +161,49 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
           return createJsonResponse({ success: false, error: e.message }, 500);
         }
       }
+
+      case "/api/settings": {
+        if (request.method !== "POST") return createJsonResponse({ success: false, error: "Method Not Allowed" }, 405);
+        try {
+          const payload = await request.json();
+          const { worker, key, value } = payload;
+
+          if (!worker || !key) {
+            return createJsonResponse({ success: false, error: "Missing worker or key" }, 400);
+          }
+
+          const kvKey = `dashboard:${worker}:${key}`;
+          await env.CONFIG_KV.put(kvKey, JSON.stringify(value));
+
+          return createJsonResponse({ success: true, worker, key });
+        } catch (e: any) {
+          return createJsonResponse({ success: false, error: e.message }, 500);
+        }
+      }
+
+      // GET /api/settings/{worker}
+        if (path.startsWith("/api/settings/")) {
+          const worker = path.replace("/api/settings/", "");
+
+          if (request.method !== "GET") return createJsonResponse({ success: false, error: "Method Not Allowed" }, 405);
+
+          const settings: Record<string, string | number | boolean> = {};
+          const list = await env.CONFIG_KV.list({ prefix: `dashboard:${worker}:` });
+
+          for (const kv of list.keys) {
+            const key = kv.name.replace(`dashboard:${worker}:`, "");
+            const value = await env.CONFIG_KV.get(kv.name);
+            if (value) {
+              try {
+                settings[key] = JSON.parse(value);
+              } catch {
+                settings[key] = value;
+              }
+            }
+          }
+
+          return new Response(JSON.stringify({ success: true, worker, settings }), { status: 200, headers: { "Content-Type": "application/json" } });
+        }
 
       case "/batch": {
         if (request.method !== "POST") {
