@@ -20,12 +20,5 @@
       "binding": "CONFIG_KV",
       "id": "c5917667a21745e390ff969f32b1847d"
     }
-  ],
-  "secrets_store_secrets": [
-    {
-      "name": "D1_INTERNAL_KEY",
-      "type": "secret"
-    }
   ]
 }
-} 
