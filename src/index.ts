@@ -163,6 +163,28 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
       }
 
       case "/api/settings": {
+        if (request.method === "GET") {
+          const settings: Record<string, Record<string, string | number | boolean>> = {};
+          const list = await env.CONFIG_KV.list({ prefix: `dashboard:` });
+          for (const kv of list.keys) {
+            const parts = kv.name.split(":");
+            if (parts.length >= 3) {
+              const worker = parts[1];
+              const key = parts.slice(2).join(":");
+              const value = await env.CONFIG_KV.get(kv.name);
+              if (value) {
+                if (!settings[worker]) settings[worker] = {};
+                try {
+                  settings[worker][key] = JSON.parse(value);
+                } catch {
+                  settings[worker][key] = value;
+                }
+              }
+            }
+          }
+          return new Response(JSON.stringify({ success: true, settings }), { status: 200, headers: { "Content-Type": "application/json" } });
+        }
+
         if (request.method !== "POST") return createJsonResponse({ success: false, error: "Method Not Allowed" }, 405);
         try {
           const payload = await request.json();
@@ -181,29 +203,8 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
         }
       }
 
-      // GET /api/settings/{worker}
-        if (path.startsWith("/api/settings/")) {
-          const worker = path.replace("/api/settings/", "");
+      // GET /api/settings/{worker} is handled dynamically
 
-          if (request.method !== "GET") return createJsonResponse({ success: false, error: "Method Not Allowed" }, 405);
-
-          const settings: Record<string, string | number | boolean> = {};
-          const list = await env.CONFIG_KV.list({ prefix: `dashboard:${worker}:` });
-
-          for (const kv of list.keys) {
-            const key = kv.name.replace(`dashboard:${worker}:`, "");
-            const value = await env.CONFIG_KV.get(kv.name);
-            if (value) {
-              try {
-                settings[key] = JSON.parse(value);
-              } catch {
-                settings[key] = value;
-              }
-            }
-          }
-
-          return new Response(JSON.stringify({ success: true, worker, settings }), { status: 200, headers: { "Content-Type": "application/json" } });
-        }
 
       case "/batch": {
         if (request.method !== "POST") {
