@@ -164,20 +164,18 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
 
       case "/api/settings": {
         if (request.method === "GET") {
-          const settings: Record<string, Record<string, string | number | boolean>> = {};
-          const list = await env.CONFIG_KV.list({ prefix: `dashboard:` });
-          for (const kv of list.keys) {
-            const parts = kv.name.split(":");
-            if (parts.length >= 3) {
-              const worker = parts[1];
-              const key = parts.slice(2).join(":");
+          const settings: Record<string, any> = {};
+          
+          const prefixes = ["global:", "webhook:", "trade:", "agent:", "telegram:", "email:", "database:", "retention:", "bot:"];
+          for (const prefix of prefixes) {
+            const list = await env.CONFIG_KV.list({ prefix });
+            for (const kv of list.keys) {
               const value = await env.CONFIG_KV.get(kv.name);
-              if (value) {
-                if (!settings[worker]) settings[worker] = {};
+              if (value !== null) {
                 try {
-                  settings[worker][key] = JSON.parse(value);
+                  settings[kv.name] = JSON.parse(value);
                 } catch {
-                  settings[worker][key] = value;
+                  settings[kv.name] = value;
                 }
               }
             }
@@ -190,12 +188,11 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
           const payload = await request.json();
           const { worker, key, value } = payload;
 
-          if (!worker || !key) {
-            return createJsonResponse({ success: false, error: "Missing worker or key" }, 400);
+          if (!key) {
+            return createJsonResponse({ success: false, error: "Missing key" }, 400);
           }
 
-          const kvKey = `dashboard:${worker}:${key}`;
-          await env.CONFIG_KV.put(kvKey, JSON.stringify(value));
+          await env.CONFIG_KV.put(key, JSON.stringify(value));
 
           return createJsonResponse({ success: true, worker, key });
         } catch (e: any) {
