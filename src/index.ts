@@ -1,7 +1,10 @@
-import { log } from '@shared/utils';
-import type { D1Database, D1Result, KVNamespace, SecretBinding } from "@cloudflare/workers-types";
+import type { D1Database, D1Result, KVNamespace } from "@cloudflare/workers-types";
 
 // --- Type Definitions ---
+
+export interface SecretBinding {
+  get(): Promise<string | null>;
+}
 
 interface Env {
   DB: D1Database;
@@ -24,6 +27,7 @@ interface StandardResponse {
   lastRowId?: number | null; // For INSERT
   changes?: number | null; // For INSERT/UPDATE/DELETE
   error?: string | null;
+  [key: string]: any;
 }
 
 // --- Worker Definition ---
@@ -185,7 +189,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
 
         if (request.method !== "POST") return createJsonResponse({ success: false, error: "Method Not Allowed" }, 405);
         try {
-          const payload = await request.json();
+          const payload: any = await request.json();
           const { worker, key, value } = payload;
 
           if (!key) {
