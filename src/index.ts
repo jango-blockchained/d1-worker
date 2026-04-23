@@ -32,9 +32,23 @@ interface StandardResponse {
 
 // --- Worker Definition ---
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS, PUT, DELETE",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Request-ID, X-Internal-Auth-Key",
+};
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    return await handleRequest(request, env);
+    if (request.method === "OPTIONS") {
+      return new Response(null, { headers: corsHeaders });
+    }
+    const response = await handleRequest(request, env);
+    const newResponse = new Response(response.body, response);
+    for (const [key, value] of Object.entries(corsHeaders)) {
+      newResponse.headers.set(key, value);
+    }
+    return newResponse;
   },
 };
 
