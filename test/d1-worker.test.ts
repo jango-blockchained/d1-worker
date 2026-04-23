@@ -42,10 +42,19 @@ describe("D1 Worker", () => {
     get: mock(() => Promise.resolve(TEST_INTERNAL_KEY)),
   };
 
+  // Mock KV namespace for config
+  const mockKV = {
+    get: mock((key: string) => Promise.resolve(null)),
+    put: mock(() => Promise.resolve()),
+    list: mock(() => Promise.resolve({ keys: [] })),
+    delete: mock(() => Promise.resolve()),
+  };
+
   // Mock environment setup function - with internal key secret
   const createMockEnv = (withKey = true) => ({
     DB: mockDB,
     D1_INTERNAL_KEY: withKey ? mockSecretBinding : undefined,
+    CONFIG_KV: mockKV,
   });
 
   // Mock environment used in tests (instantiated per test)

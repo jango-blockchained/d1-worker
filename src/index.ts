@@ -170,7 +170,10 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
         if (request.method === "GET") {
           const settings: Record<string, any> = {};
           
-          const prefixes = ["global:", "webhook:", "trade:", "agent:", "telegram:", "email:", "database:", "retention:", "bot:"];
+          const prefixes = [
+            "global:", "webhook:", "trade:", "agent:", "bot:",
+            "email:", "database:", "retention:", "routing:", "behavior:", "cron:", "ai:"
+          ];
           for (const prefix of prefixes) {
             const list = await env.CONFIG_KV.list({ prefix });
             for (const kv of list.keys) {
