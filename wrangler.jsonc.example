@@ -1,0 +1,34 @@
+{
+  "name": "d1-worker",
+  // ACCOUNT_ID: Get from Cloudflare Dashboard > Overview > Account ID
+  "account_id": "YOUR_ACCOUNT_ID",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-03-07",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // OBSERVABILITY: Enable logging and sampling
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+
+  // D1_DATABASES: SQLite database for trade data
+  // DATABASE_ID: Get from Cloudflare Dashboard > D1 > Databases
+  "d1_databases": [
+    {
+      "binding": "DB",
+      // DATABASE_NAME: Your D1 database name
+      "database_name": "YOUR_DATABASE_NAME",
+      // DATABASE_ID: Your D1 database ID (UUID)
+      "database_id": "YOUR_DATABASE_ID"
+    }
+  ],
+
+  // KV_NAMESPACES: Key-Value storage for config (optional)
+  "kv_namespaces": [
+    {
+      "binding": "CONFIG_KV",
+      "id": "YOUR_CONFIG_KV_ID"
+    }
+  ]
+}
