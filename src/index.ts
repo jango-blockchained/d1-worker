@@ -271,9 +271,9 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
         if (request.method !== "GET") return createJsonResponse({ success: false, error: "Method Not Allowed" }, 405);
         try {
           await env.DB.prepare("SELECT 1").first();
-          return createJsonResponse({ status: "ok", service: "d1-worker" });
+          return createJsonResponse({ success: true, result: { status: "ok", service: "d1-worker" } });
         } catch (e: any) {
-          return createJsonResponse({ status: "error", service: "d1-worker", error: e.message }, 500);
+          return createJsonResponse({ success: false, error: e?.message || "Health check failed" }, 500);
         }
       }
 

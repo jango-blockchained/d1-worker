@@ -101,10 +101,10 @@ describe("D1 Worker", () => {
       }),
     });
 
-    const response = await d1Worker.fetch(request, mockEnv);
+    const response = await d1Worker.fetch(request as any, mockEnv as any);
     expect(response.status).toBe(200);
 
-    const responseData = await response.json();
+    const responseData = (await response.json()) as any;
     expect(responseData.success).toBe(true);
   });
 
@@ -120,10 +120,10 @@ describe("D1 Worker", () => {
       }),
     });
 
-    const response = await d1Worker.fetch(request, mockEnv);
+    const response = await d1Worker.fetch(request as any, mockEnv as any);
     expect(response.status).toBe(401);
 
-    const responseData = await response.json();
+    const responseData = (await response.json()) as any;
     expect(responseData.success).toBe(false);
   });
 
@@ -140,10 +140,10 @@ describe("D1 Worker", () => {
       }),
     });
 
-    const response = await d1Worker.fetch(request, mockEnv);
+    const response = await d1Worker.fetch(request as any, mockEnv as any);
     expect(response.status).toBe(401);
 
-    const responseData = await response.json();
+    const responseData = (await response.json()) as any;
     expect(responseData.success).toBe(false);
   });
 
@@ -160,10 +160,10 @@ describe("D1 Worker", () => {
       }),
     });
 
-    const response = await d1Worker.fetch(request, envWithoutKey);
+    const response = await d1Worker.fetch(request as any, envWithoutKey as any);
     expect(response.status).toBe(200);
 
-    const responseData = await response.json();
+    const responseData = (await response.json()) as any;
     expect(responseData.success).toBe(true);
   });
 
@@ -177,7 +177,7 @@ describe("D1 Worker", () => {
       body: JSON.stringify(validQueryRequest),
     });
 
-    const response = await d1Worker.fetch(request, mockEnv);
+    const response = await d1Worker.fetch(request as any, mockEnv as any);
     expect(response.status).toBe(404);
   });
 
@@ -194,10 +194,10 @@ describe("D1 Worker", () => {
       }),
     });
 
-    const response = await d1Worker.fetch(request, mockEnv);
+    const response = await d1Worker.fetch(request as any, mockEnv as any);
     expect(response.status).toBe(200);
 
-    const responseData = await response.json();
+    const responseData = (await response.json()) as any;
     expect(responseData.success).toBe(true);
     expect(responseData.results).toBeDefined();
   });
@@ -215,10 +215,10 @@ describe("D1 Worker", () => {
       }),
     });
 
-    const response = await d1Worker.fetch(request, mockEnv);
+    const response = await d1Worker.fetch(request as any, mockEnv as any);
     expect(response.status).toBe(200);
 
-    const responseData = await response.json();
+    const responseData = (await response.json()) as any;
     expect(responseData.success).toBe(true);
     expect(responseData.lastRowId).toBeDefined();
     expect(responseData.changes).toBeDefined();
@@ -234,10 +234,10 @@ describe("D1 Worker", () => {
       body: JSON.stringify(validBatchRequest),
     });
 
-    const response = await d1Worker.fetch(request, mockEnv);
+    const response = await d1Worker.fetch(request as any, mockEnv as any);
     expect(response.status).toBe(200);
 
-    const responseData = await response.json();
+    const responseData = (await response.json()) as any;
     expect(responseData.success).toBe(true);
     expect(responseData.results).toBeDefined();
   });
@@ -251,7 +251,7 @@ describe("D1 Worker", () => {
       },
     });
 
-    const response = await d1Worker.fetch(request, mockEnv);
+    const response = await d1Worker.fetch(request as any, mockEnv as any);
     expect(response.status).toBe(405);
   });
 
@@ -270,10 +270,10 @@ describe("D1 Worker", () => {
       body: JSON.stringify(validQueryRequest),
     });
 
-    const response = await d1Worker.fetch(request, mockEnv);
+    const response = await d1Worker.fetch(request as any, mockEnv as any);
     expect(response.status).toBe(500);
 
-    const responseData = await response.json();
+    const responseData = (await response.json()) as any;
     expect(responseData.success).toBe(false);
     expect(responseData.error).toBeDefined();
   });
