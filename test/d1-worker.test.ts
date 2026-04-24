@@ -37,11 +37,6 @@ describe("D1 Worker", () => {
 
   const TEST_INTERNAL_KEY = "test-internal-key";
 
-  // Mock secret binding for internal key
-  const mockSecretBinding = {
-    get: mock(() => Promise.resolve(TEST_INTERNAL_KEY)),
-  };
-
   // Mock KV namespace for config
   const mockKV = {
     get: mock((key: string) => Promise.resolve(null)),
@@ -53,7 +48,7 @@ describe("D1 Worker", () => {
   // Mock environment setup function - with internal key secret
   const createMockEnv = (withKey = true) => ({
     DB: mockDB,
-    D1_INTERNAL_KEY: withKey ? mockSecretBinding : undefined,
+    D1_INTERNAL_KEY: withKey ? TEST_INTERNAL_KEY : undefined,
     CONFIG_KV: mockKV,
   });
 

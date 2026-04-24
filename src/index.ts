@@ -2,14 +2,10 @@ import type { D1Database, D1Result, KVNamespace } from "@cloudflare/workers-type
 
 // --- Type Definitions ---
 
-export interface SecretBinding {
-  get(): Promise<string | null>;
-}
-
 interface Env {
   DB: D1Database;
   CONFIG_KV: KVNamespace;
-  D1_INTERNAL_KEY?: SecretBinding;
+  D1_INTERNAL_KEY?: string;
 }
 
 interface QueryPayload {
@@ -74,7 +70,7 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
   console.log(`[${requestId}] D1 Worker received request: ${request.method} ${path}`);
 
   // Internal authentication check
-  const internalKey = await env.D1_INTERNAL_KEY?.get();
+  const internalKey = env.D1_INTERNAL_KEY;
   if (internalKey) {
     const providedKey = request.headers.get("X-Internal-Auth-Key");
     if (!providedKey || providedKey !== internalKey) {
