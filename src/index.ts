@@ -176,6 +176,33 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
         }
       }
 
+      case "/api/dashboard/balances": {
+        if (request.method !== "GET") return createJsonResponse({ success: false, error: "Method Not Allowed" }, 405);
+        try {
+          const latestSnapshots = await env.DB.prepare(`
+            SELECT b.exchange, b.asset, b.total, b.snapshot_at
+            FROM balances b
+            INNER JOIN (
+              SELECT exchange, asset, MAX(snapshot_at) as max_time
+              FROM balances
+              GROUP BY exchange, asset
+            ) latest ON b.exchange = latest.exchange AND b.asset = latest.asset AND b.snapshot_at = latest.max_time
+          `).all();
+
+          const totalBalance = (latestSnapshots.results || []).reduce((sum: number, row: any) => {
+            return sum + (row.total || 0);
+          }, 0);
+
+          return new Response(JSON.stringify({
+            success: true,
+            totalBalance: totalBalance || 0,
+            balances: latestSnapshots.results || []
+          }), { status: 200, headers: { "Content-Type": "application/json" } });
+        } catch (e: any) {
+          return createJsonResponse({ success: false, error: e.message }, 500);
+        }
+      }
+
       case "/api/settings": {
         if (request.method === "GET") {
           const settings: Record<string, any> = {};
