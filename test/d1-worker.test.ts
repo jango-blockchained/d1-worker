@@ -43,9 +43,9 @@ describe("D1 Worker", () => {
   });
 
   const createMockKV = () => ({
-    get: mock((key: string) => Promise.resolve(null)),
+    get: mock((key: string) => Promise.resolve<string | null>(null)),
     put: mock(() => Promise.resolve()),
-    list: mock(() => Promise.resolve({ keys: [] })),
+    list: mock((options?: { prefix?: string }) => Promise.resolve({ keys: [] as { name: string; expiration: number }[] })),
     delete: mock(() => Promise.resolve()),
   });
 
@@ -424,13 +424,14 @@ describe("D1 Worker", () => {
   });
 
   test("handles /api/dashboard/stats endpoint", async () => {
-    mockPreparedStatement.first.mockImplementation((col: string) => {
+    mockPreparedStatement.first.mockImplementation((col?: string) => {
       if (col === "count") return Promise.resolve({ count: 10 });
       return Promise.resolve(null);
     });
     mockPreparedStatement.all.mockImplementationOnce(() =>
       Promise.resolve({
         success: true,
+        error: null,
         results: [{ id: 1, symbol: "BTC/USD" }],
       })
     );
@@ -474,6 +475,7 @@ describe("D1 Worker", () => {
     mockPreparedStatement.all.mockImplementationOnce(() =>
       Promise.resolve({
         success: true,
+        error: null,
         results: [{ id: 1, symbol: "BTC/USD", status: "OPEN" }],
       })
     );
@@ -516,6 +518,7 @@ describe("D1 Worker", () => {
     mockPreparedStatement.all.mockImplementationOnce(() =>
       Promise.resolve({
         success: true,
+        error: null,
         results: [{ id: 1, message: "test log" }],
       })
     );
@@ -558,6 +561,7 @@ describe("D1 Worker", () => {
     mockPreparedStatement.all.mockImplementationOnce(() =>
       Promise.resolve({
         success: true,
+        error: null,
         results: [
           { exchange: "binance", asset: "BTC", total: 1.5, snapshot_at: "2024-01-01" },
         ],
@@ -600,9 +604,9 @@ describe("D1 Worker", () => {
   });
 
   test("handles /api/settings GET with KV values", async () => {
-    mockKV.list.mockImplementation(({ prefix }: { prefix: string }) =>
+    mockKV.list.mockImplementation((options?: { prefix?: string }) =>
       Promise.resolve({
-        keys: [{ name: `${prefix}test`, expiration: 0 }],
+        keys: [{ name: `${options?.prefix || ""}test`, expiration: 0 }],
       })
     );
     mockKV.get.mockImplementation((key: string) =>
@@ -725,8 +729,8 @@ describe("D1 Worker", () => {
   test("handles batch with partial failure", async () => {
     mockDB.batch.mockImplementationOnce(() =>
       Promise.resolve([
-        { success: true, error: null },
-        { success: false, error: "Constraint violation" },
+        { success: true, error: null, meta: { last_row_id: 123, changes: 1 } },
+        { success: false, error: "Constraint violation", meta: { changes: 0 } } as any,
       ])
     );
 
