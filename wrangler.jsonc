@@ -6,19 +6,19 @@
   "compatibility_flags": ["nodejs_compat"],
   "observability": {
     "enabled": true,
-    "head_sampling_rate": 1,
+    "head_sampling_rate": 1
   },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "trade-data-db",
-      "database_id": "a682f084-594e-4bd8-be2d-40ea5f8cf42e",
-    },
+      "database_id": "a682f084-594e-4bd8-be2d-40ea5f8cf42e"
+    }
   ],
   "kv_namespaces": [
     {
       "binding": "CONFIG_KV",
-      "id": "c5917667a21745e390ff969f32b1847d",
-    },
-  ],
+      "id": "c5917667a21745e390ff969f32b1847d"
+    }
+  ]
 }
