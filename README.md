@@ -4,9 +4,21 @@
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescript-lang.org/) [![Runtime](https://img.shields.io/badge/Runtime-Bun-black?logo=bun)](https://bun.sh) [![Platform](https://img.shields.io/badge/Platform-Cloudflare®%20Edge%20Workers-orange?logo=cloudflare)](https://workers.cloudflare.com/) [![License](https://img.shields.io/badge/License-CC%20BY%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by/4.0/) [![Build Status](https://github.com/jango-blockchained/hoox-setup/actions/workflows/opencode.yml/badge.svg)](https://github.com/jango-blockchained/hoox-setup/actions/workflows/opencode.yml)
 
-**[Main Repository](https://github.com/jango-blockchained/hoox-setup)**
+**[Main Repository](https://github.com/jango-blockchained/hoox-setup)** · **[View on GitHub](https://github.com/jango-blockchained/d1-worker)**
 
 An example Cloudflare® Worker service demonstrating interaction with a Cloudflare® D1 database. In the main Hoox project, workers typically interact with D1 directly using bindings configured in their `wrangler.jsonc` files, but this serves as a standalone example.
+
+---
+
+## About
+
+This worker is part of the **[Hoox Trading System](https://github.com/jango-blockchained/hoox-setup)** - a zero-latency edge trading ecosystem. The `d1-worker` handles:
+
+- **Data Aggregation**: Collects and stores trade histories from all workers
+- **SQL Operations**: Provides standardized database queries via D1 bindings
+- **Trade Logging**: Persists all trade executions and signals for analysis
+- **System Logs**: Aggregates logs from all workers for monitoring
+- **Atomic Storage**: Leverages D1's distributed SQLite for reliable data persistence
 
 ## Features
 
