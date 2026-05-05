@@ -35,7 +35,7 @@ async function trackAnalytics(
   if (!env.ANALYTICS_SERVICE) return;
   try {
     await env.ANALYTICS_SERVICE.fetch(
-      new Request("http://analytics-service" + endpoint, {
+      new Request("http://localhost" + endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
