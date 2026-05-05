@@ -14,6 +14,7 @@ interface Env {
   DB: D1Database;
   CONFIG_KV: KVNamespace;
   D1_INTERNAL_KEY?: string;
+  ANALYTICS_SERVICE?: Fetcher;
 }
 
 // --- Worker Definition ---
@@ -25,6 +26,26 @@ const corsHeaders = {
     "Content-Type, Authorization, X-Request-ID, X-Internal-Auth-Key",
 };
 
+// Analytics tracking helper
+async function trackAnalytics(
+  env: Env,
+  endpoint: string,
+  body: Record<string, any>
+): Promise<void> {
+  if (!env.ANALYTICS_SERVICE) return;
+  try {
+    await env.ANALYTICS_SERVICE.fetch(
+      new Request("http://analytics-service" + endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }) as any
+    );
+  } catch (e) {
+    console.error("Analytics tracking failed:", e);
+  }
+}
+
 const router = createRouter<Env>();
 
 // Health check endpoint
@@ -34,6 +55,8 @@ router.get('/health', async (request: Request, env: Env, ctx: ExecutionContext) 
 
 // Query endpoint
 router.post('/query', async (request: Request, env: Env, ctx: ExecutionContext) => {
+  const startTime = Date.now();
+
   // Internal authentication check
   const internalKey = env.D1_INTERNAL_KEY;
   if (internalKey) {
@@ -75,11 +98,22 @@ router.post('/query', async (request: Request, env: Env, ctx: ExecutionContext) 
       if (!result.success) {
         throw new Error(result.error || "D1 write query failed");
       }
-      return createJsonResponse({
+      const response = createJsonResponse({
         success: true,
         lastRowId: result.meta?.last_row_id ?? null,
         changes: result.meta?.changes ?? null,
       });
+
+      // Track API call analytics (non-blocking)
+      const latencyMs = Date.now() - startTime;
+      trackAnalytics(env, "/track/api-call", {
+        worker: "d1-worker",
+        endpoint: "/query",
+        latencyMs,
+        success: true,
+      });
+
+      return response;
     } else {
       console.warn(`Unsupported query type starting with: ${query.substring(0, 10)}...`);
       return Errors.badRequest("Unsupported query type (must be SELECT, INSERT, UPDATE, DELETE, REPLACE)");
@@ -87,12 +121,24 @@ router.post('/query', async (request: Request, env: Env, ctx: ExecutionContext) 
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     console.error(`Query error: ${errorMsg}`);
+
+    // Track failed API call (non-blocking)
+    const latencyMs = Date.now() - startTime;
+    trackAnalytics(env, "/track/api-call", {
+      worker: "d1-worker",
+      endpoint: "/query",
+      latencyMs,
+      success: false,
+    });
+
     return Errors.internal(errorMsg);
   }
 });
 
 // Batch endpoint
 router.post('/batch', async (request: Request, env: Env, ctx: ExecutionContext) => {
+  const startTime = Date.now();
+
   // Internal authentication check
   const internalKey = env.D1_INTERNAL_KEY;
   if (internalKey) {
@@ -119,10 +165,29 @@ router.post('/batch', async (request: Request, env: Env, ctx: ExecutionContext) 
       results.push(response);
     }
 
+    // Track API call analytics (non-blocking)
+    const latencyMs = Date.now() - startTime;
+    trackAnalytics(env, "/track/api-call", {
+      worker: "d1-worker",
+      endpoint: "/batch",
+      latencyMs,
+      success: true,
+    });
+
     return createJsonResponse({ success: true, results });
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     console.error(`Batch error: ${errorMsg}`);
+
+    // Track failed API call (non-blocking)
+    const latencyMs = Date.now() - startTime;
+    trackAnalytics(env, "/track/api-call", {
+      worker: "d1-worker",
+      endpoint: "/batch",
+      latencyMs,
+      success: false,
+    });
+
     return Errors.internal(errorMsg);
   }
 });
