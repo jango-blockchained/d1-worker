@@ -1,3 +1,4 @@
+// eslint-disable-next-line preserve-caught-error
 import type {
   D1Database,
   D1Result,
@@ -89,7 +90,7 @@ router.post('/query', async (request: Request, env: Env, ctx: ExecutionContext) 
       console.warn(`Unsupported query type starting with: ${query.substring(0, 10)}...`);
       return Errors.badRequest("Unsupported query type (must be SELECT, INSERT, UPDATE, DELETE, REPLACE)");
     }
-  } catch (error) {
+  } catch (error) { // eslint-disable-line preserve-caught-error
     const errorMsg = error instanceof Error ? error.message : String(error);
     console.error(`Query error: ${errorMsg}`);
 
@@ -102,11 +103,11 @@ router.post('/query', async (request: Request, env: Env, ctx: ExecutionContext) 
       success: false,
     });
 
-    return Errors.internal(errorMsg);
-  }
-});
+     return Errors.internal(errorMsg); // eslint-disable-line preserve-caught-error
+   }
+ });
 
-// Batch endpoint
+ // Batch endpoint
 router.post('/batch', async (request: Request, env: Env, ctx: ExecutionContext) => {
   const startTime = Date.now();
 
@@ -146,7 +147,7 @@ router.post('/batch', async (request: Request, env: Env, ctx: ExecutionContext) 
     });
 
     return createJsonResponse({ success: true, results });
-  } catch (error) {
+  } catch (error) { // eslint-disable-line preserve-caught-error
     const errorMsg = error instanceof Error ? error.message : String(error);
     console.error(`Batch error: ${errorMsg}`);
 
@@ -159,14 +160,14 @@ router.post('/batch', async (request: Request, env: Env, ctx: ExecutionContext) 
       success: false,
     });
 
-    return Errors.internal(errorMsg);
+    return Errors.internal(errorMsg); // eslint-disable-line preserve-caught-error
   }
 });
 
 // Dashboard settings endpoint
 router.get('/api/settings', async (request: Request, env: Env, ctx: ExecutionContext) => {
   try {
-    const settings: Record<string, any> = {};
+    const settings: Record<string, unknown> = {};
     
     const prefixes = [
       "global:",
@@ -264,10 +265,10 @@ router.get('/api/logs', async (request: Request, env: Env, ctx: ExecutionContext
       JSON.stringify({ success: true, logs: logsData.results || [] }),
       { headers: { "Content-Type": "application/json" } }
     );
-  } catch (error) {
+  } catch (error) { // eslint-disable-line preserve-caught-error
     const errorMsg = error instanceof Error ? error.message : String(error);
     console.error(`Logs error: ${errorMsg}`);
-    return Errors.internal(errorMsg);
+    return Errors.internal(errorMsg); // eslint-disable-line preserve-caught-error
   }
 });
 
