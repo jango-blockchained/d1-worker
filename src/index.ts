@@ -7,50 +7,26 @@ import { createErrorResponse, Errors, createJsonResponse } from '@hoox/shared/er
 import { createRouter } from '@hoox/shared/router';
 import type { Handler } from '@hoox/shared/types/router';
 import type { QueryPayload, BatchPayload } from '@hoox/shared/types';
+import { trackAnalytics } from '@hoox/shared/analytics';
+import type { AnalyticsEnv } from '@hoox/shared/analytics';
+import { requireInternalAuth, corsHeaders, handleCorsPreflightRequest } from '@hoox/shared/middleware';
+import { healthCheck } from '@hoox/shared/health';
 
 // --- Type Definitions ---
 
-interface Env {
+interface Env extends AnalyticsEnv {
   DB: D1Database;
   CONFIG_KV: KVNamespace;
   D1_INTERNAL_KEY?: string;
-  ANALYTICS_SERVICE?: Fetcher;
 }
 
 // --- Worker Definition ---
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS, PUT, DELETE",
-  "Access-Control-Allow-Headers":
-    "Content-Type, Authorization, X-Request-ID, X-Internal-Auth-Key",
-};
-
-// Analytics tracking helper
-async function trackAnalytics(
-  env: Env,
-  endpoint: string,
-  body: Record<string, any>
-): Promise<void> {
-  if (!env.ANALYTICS_SERVICE) return;
-  try {
-    await env.ANALYTICS_SERVICE.fetch(
-      new Request("http://localhost" + endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      }) as any
-    );
-  } catch (e) {
-    console.error("Analytics tracking failed:", e);
-  }
-}
 
 const router = createRouter<Env>();
 
 // Health check endpoint
 router.get('/health', async (request: Request, env: Env, ctx: ExecutionContext) => {
-  return createJsonResponse({ success: true, status: "ok" });
+  return healthCheck({ worker: 'd1-worker' });
 });
 
 // Query endpoint
@@ -58,13 +34,8 @@ router.post('/query', async (request: Request, env: Env, ctx: ExecutionContext) 
   const startTime = Date.now();
 
   // Internal authentication check
-  const internalKey = env.D1_INTERNAL_KEY;
-  if (internalKey) {
-    const providedKey = request.headers.get("X-Internal-Auth-Key");
-    if (!providedKey || providedKey !== internalKey) {
-      return Errors.unauthorized();
-    }
-  }
+  const authError = requireInternalAuth(request, env, 'D1_INTERNAL_KEY');
+  if (authError) return authError;
 
   try {
     const payload: QueryPayload = await request.json();
@@ -302,12 +273,13 @@ router.get('/api/logs', async (request: Request, env: Env, ctx: ExecutionContext
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    const cors = corsHeaders();
     if (request.method === "OPTIONS") {
-      return new Response(null, { headers: corsHeaders });
+      return new Response(null, { headers: cors });
     }
     const response = await router.handle(request, env, {} as ExecutionContext);
     const newResponse = new Response(response.body, response);
-    for (const [key, value] of Object.entries(corsHeaders)) {
+    for (const [key, value] of Object.entries(cors)) {
       newResponse.headers.set(key, value);
     }
     return newResponse;
