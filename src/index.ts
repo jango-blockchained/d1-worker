@@ -4,7 +4,6 @@ import type {
   KVNamespace,
 } from "@cloudflare/workers-types";
 import {
-  createErrorResponse,
   Errors,
   createJsonResponse,
 } from "@jango-blockchained/hoox-shared/errors";
@@ -20,7 +19,6 @@ import {
   createLogger,
   requireInternalAuth,
   corsHeaders,
-  handleCorsPreflightRequest,
   withRequestLog,
 } from "@jango-blockchained/hoox-shared/middleware";
 import { healthCheck } from "@jango-blockchained/hoox-shared/health";
@@ -282,13 +280,11 @@ router.post(
         return Errors.badRequest("Missing key");
       }
 
-      const worker = typeof payload.worker === "string" ? payload.worker : "default";
+      const worker =
+        typeof payload.worker === "string" ? payload.worker : "default";
       const configKey = `${worker}:${key}`;
 
-      await env.CONFIG_KV.put(
-        configKey,
-        JSON.stringify(payload.value ?? {})
-      );
+      await env.CONFIG_KV.put(configKey, JSON.stringify(payload.value ?? {}));
 
       return createJsonResponse({ success: true, key: configKey });
     } catch (error) {
@@ -386,7 +382,11 @@ router.get(
 
 export default {
   fetch: withRequestLog(
-    async (request: Request, env: Env, ctx: ExecutionContext): Promise<Response> => {
+    async (
+      request: Request,
+      env: Env,
+      ctx: ExecutionContext
+    ): Promise<Response> => {
       const cors = corsHeaders();
       if (request.method === "OPTIONS") {
         return new Response(null, { headers: cors });
