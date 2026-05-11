@@ -6,6 +6,7 @@ import type {
 import {
   Errors,
   createJsonResponse,
+  toError,
 } from "@jango-blockchained/hoox-shared/errors";
 import { createRouter } from "@jango-blockchained/hoox-shared/router";
 import type { Handler } from "@jango-blockchained/hoox-shared/types/router";
@@ -124,7 +125,7 @@ router.post(
         );
       }
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = toError(error);
       console.error(`Query error: ${errorMsg}`);
 
       // Track failed API call (non-blocking)
@@ -148,13 +149,8 @@ router.post(
     const startTime = Date.now();
 
     // Internal authentication check
-    const internalKey = env.D1_INTERNAL_KEY;
-    if (internalKey) {
-      const providedKey = request.headers.get("X-Internal-Auth-Key");
-      if (!providedKey || providedKey !== internalKey) {
-        return Errors.unauthorized();
-      }
-    }
+    const authError = requireInternalAuth(request, env, "D1_INTERNAL_KEY");
+    if (authError) return authError;
 
     try {
       let payload: BatchPayload;
@@ -204,7 +200,7 @@ router.post(
 
       return createJsonResponse({ success: true, results });
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = toError(error);
       console.error(`Batch error: ${errorMsg}`);
 
       // Track failed API call (non-blocking)
@@ -244,11 +240,9 @@ router.get(
         }
       }
 
-      return new Response(JSON.stringify({ success: true, settings }), {
-        headers: { "Content-Type": "application/json" },
-      });
+      return createJsonResponse({ success: true, settings });
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = toError(error);
       console.error(`Settings error: ${errorMsg}`);
       return Errors.internal(errorMsg);
     }
@@ -259,13 +253,8 @@ router.get(
 router.post(
   "/api/settings",
   async (request: Request, env: Env, ctx: ExecutionContext) => {
-    const internalKey = env.D1_INTERNAL_KEY;
-    if (internalKey) {
-      const providedKey = request.headers.get("X-Internal-Auth-Key");
-      if (!providedKey || providedKey !== internalKey) {
-        return Errors.unauthorized();
-      }
-    }
+    const authError = requireInternalAuth(request, env, "D1_INTERNAL_KEY");
+    if (authError) return authError;
 
     try {
       let payload: Record<string, unknown>;
@@ -288,7 +277,7 @@ router.post(
 
       return createJsonResponse({ success: true, key: configKey });
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = toError(error);
       console.error(`Settings POST error: ${errorMsg}`);
       return Errors.internal(errorMsg);
     }
@@ -313,22 +302,19 @@ router.get(
       ).all();
 
       const totalBalance = (latestSnapshots.results || []).reduce(
-        (sum: number, row: any) => {
-          return sum + (row.total || 0);
+        (sum: number, row: Record<string, unknown>) => {
+          return sum + ((row.total as number) || 0);
         },
         0
       );
 
-      return new Response(
-        JSON.stringify({
-          success: true,
-          totalBalance,
-          balances: latestSnapshots.results || [],
-        }),
-        { headers: { "Content-Type": "application/json" } }
-      );
+      return createJsonResponse({
+        success: true,
+        totalBalance,
+        balances: latestSnapshots.results || [],
+      });
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = toError(error);
       console.error(`Balances error: ${errorMsg}`);
       return Errors.internal(errorMsg);
     }
@@ -344,15 +330,12 @@ router.get(
         "SELECT * FROM positions WHERE status = 'OPEN' ORDER BY updated_at DESC"
       ).all();
 
-      return new Response(
-        JSON.stringify({
-          success: true,
-          positions: positionsData.results || [],
-        }),
-        { headers: { "Content-Type": "application/json" } }
-      );
+      return createJsonResponse({
+        success: true,
+        positions: positionsData.results || [],
+      });
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = toError(error);
       console.error(`Positions error: ${errorMsg}`);
       return Errors.internal(errorMsg);
     }
@@ -368,12 +351,9 @@ router.get(
         "SELECT * FROM system_logs ORDER BY timestamp DESC LIMIT 50"
       ).all();
 
-      return new Response(
-        JSON.stringify({ success: true, logs: logsData.results || [] }),
-        { headers: { "Content-Type": "application/json" } }
-      );
+      return createJsonResponse({ success: true, logs: logsData.results || [] });
     } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorMsg = toError(error);
       console.error(`Logs error: ${errorMsg}`);
       return Errors.internal(errorMsg);
     }
