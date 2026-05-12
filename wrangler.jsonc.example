@@ -43,4 +43,13 @@
       "id": "YOUR_CONFIG_KV_ID"
     }
   ]
+
+  // HYPERDRIVE: Connection pooling for external databases ($5/mo add-on)
+  // Create via: wrangler hyperdrive create <name> --connection-string="..."
+  // "hyperdrive": [
+  //   {
+  //     "binding": "HYPERDRIVE",
+  //     "id": "YOUR_HYPERDRIVE_ID"
+  //   }
+  // ]
 }
