@@ -13,6 +13,11 @@
   "compatibility_date": "2025-03-07",
   "compatibility_flags": ["nodejs_compat"],
 
+  // PLACEMENT: Smart Placement for reduced latency (free, all plans)
+  "placement": {
+    "mode": "smart"
+  },
+
   // OBSERVABILITY: Enable logging and sampling
   "observability": {
     "enabled": true,
