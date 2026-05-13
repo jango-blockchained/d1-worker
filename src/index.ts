@@ -24,11 +24,11 @@ import {
 } from "@jango-blockchained/hoox-shared/middleware";
 import { healthCheck } from "@jango-blockchained/hoox-shared/health";
 
+const logger = createLogger({ service: "d1-worker", module: "router" });
+
 // --- Type Definitions ---
 
-interface Env extends AnalyticsEnv {
-  DB: D1Database;
-  CONFIG_KV: KVNamespace;
+interface Env extends Cloudflare.Env, AnalyticsEnv {
   D1_INTERNAL_KEY?: string;
 }
 
@@ -76,13 +76,13 @@ router.post(
       const query = payload.query.trim().toUpperCase();
       const params = payload.params || [];
 
-      console.log(`Executing D1 query:`, payload.query);
+      logger.info("Executing D1 query", { query: payload.query });
       const stmt = env.DB.prepare(payload.query).bind(...params);
 
       // Check if query is likely read or write
       if (query.startsWith("SELECT")) {
         const result: D1Result<Record<string, unknown>> = await stmt.all();
-        console.log(`D1 SELECT result: success=${result.success}`);
+        logger.info("D1 SELECT result", { success: result.success });
         if (!result.success) {
           throw new Error(result.error || "D1 SELECT query failed");
         }
@@ -94,9 +94,7 @@ router.post(
         query.startsWith("REPLACE")
       ) {
         const result: D1Result = await stmt.run();
-        console.log(
-          `D1 write result: success=${result.success}, changes=${result.meta?.changes}`
-        );
+        logger.info("D1 write result", { success: result.success, changes: result.meta?.changes });
         if (!result.success) {
           throw new Error(result.error || "D1 write query failed");
         }
@@ -108,34 +106,32 @@ router.post(
 
         // Track API call analytics (non-blocking)
         const latencyMs = Date.now() - startTime;
-        trackAnalytics(env, "/track/api-call", {
+        ctx.waitUntil(trackAnalytics(env, "/track/api-call", {
           worker: "d1-worker",
           endpoint: "/query",
           latencyMs,
           success: true,
-        });
+        }));
 
         return response;
       } else {
-        console.warn(
-          `Unsupported query type starting with: ${query.substring(0, 10)}...`
-        );
+        logger.warn("Unsupported query type", { prefix: query.substring(0, 10) });
         return Errors.badRequest(
           "Unsupported query type (must be SELECT, INSERT, UPDATE, DELETE, REPLACE)"
         );
       }
     } catch (error) {
       const errorMsg = toError(error);
-      console.error(`Query error: ${errorMsg}`);
+      logger.error("Query error", { error: errorMsg });
 
       // Track failed API call (non-blocking)
       const latencyMs = Date.now() - startTime;
-      trackAnalytics(env, "/track/api-call", {
+      ctx.waitUntil(trackAnalytics(env, "/track/api-call", {
         worker: "d1-worker",
         endpoint: "/query",
         latencyMs,
         success: false,
-      });
+      }));
 
       return Errors.internal(errorMsg);
     }
@@ -183,12 +179,12 @@ router.post(
 
       // Track API call analytics (non-blocking)
       const latencyMs = Date.now() - startTime;
-      trackAnalytics(env, "/track/api-call", {
+      ctx.waitUntil(trackAnalytics(env, "/track/api-call", {
         worker: "d1-worker",
         endpoint: "/batch",
         latencyMs,
         success: allSuccess,
-      });
+      }));
 
       if (!allSuccess) {
         return createJsonResponse({
@@ -201,16 +197,16 @@ router.post(
       return createJsonResponse({ success: true, results });
     } catch (error) {
       const errorMsg = toError(error);
-      console.error(`Batch error: ${errorMsg}`);
+      logger.error("Batch error", { error: errorMsg });
 
       // Track failed API call (non-blocking)
       const latencyMs = Date.now() - startTime;
-      trackAnalytics(env, "/track/api-call", {
+      ctx.waitUntil(trackAnalytics(env, "/track/api-call", {
         worker: "d1-worker",
         endpoint: "/batch",
         latencyMs,
         success: false,
-      });
+      }));
 
       return Errors.internal(errorMsg);
     }
@@ -243,7 +239,7 @@ router.get(
       return createJsonResponse({ success: true, settings });
     } catch (error) {
       const errorMsg = toError(error);
-      console.error(`Settings error: ${errorMsg}`);
+      logger.error("Settings error", { error: errorMsg });
       return Errors.internal(errorMsg);
     }
   }
@@ -278,7 +274,7 @@ router.post(
       return createJsonResponse({ success: true, key: configKey });
     } catch (error) {
       const errorMsg = toError(error);
-      console.error(`Settings POST error: ${errorMsg}`);
+      logger.error("Settings POST error", { error: errorMsg });
       return Errors.internal(errorMsg);
     }
   }
@@ -315,7 +311,7 @@ router.get(
       });
     } catch (error) {
       const errorMsg = toError(error);
-      console.error(`Balances error: ${errorMsg}`);
+      logger.error("Balances error", { error: errorMsg });
       return Errors.internal(errorMsg);
     }
   }
@@ -336,7 +332,7 @@ router.get(
       });
     } catch (error) {
       const errorMsg = toError(error);
-      console.error(`Positions error: ${errorMsg}`);
+      logger.error("Positions error", { error: errorMsg });
       return Errors.internal(errorMsg);
     }
   }
@@ -354,7 +350,7 @@ router.get(
       return createJsonResponse({ success: true, logs: logsData.results || [] });
     } catch (error) {
       const errorMsg = toError(error);
-      console.error(`Logs error: ${errorMsg}`);
+      logger.error("Logs error", { error: errorMsg });
       return Errors.internal(errorMsg);
     }
   }
