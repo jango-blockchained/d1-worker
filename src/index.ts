@@ -94,7 +94,10 @@ router.post(
         query.startsWith("REPLACE")
       ) {
         const result: D1Result = await stmt.run();
-        logger.info("D1 write result", { success: result.success, changes: result.meta?.changes });
+        logger.info("D1 write result", {
+          success: result.success,
+          changes: result.meta?.changes,
+        });
         if (!result.success) {
           throw new Error(result.error || "D1 write query failed");
         }
@@ -106,16 +109,20 @@ router.post(
 
         // Track API call analytics (non-blocking)
         const latencyMs = Date.now() - startTime;
-        ctx.waitUntil(trackAnalytics(env, "/track/api-call", {
-          worker: "d1-worker",
-          endpoint: "/query",
-          latencyMs,
-          success: true,
-        }));
+        ctx.waitUntil(
+          trackAnalytics(env, "/track/api-call", {
+            worker: "d1-worker",
+            endpoint: "/query",
+            latencyMs,
+            success: true,
+          })
+        );
 
         return response;
       } else {
-        logger.warn("Unsupported query type", { prefix: query.substring(0, 10) });
+        logger.warn("Unsupported query type", {
+          prefix: query.substring(0, 10),
+        });
         return Errors.badRequest(
           "Unsupported query type (must be SELECT, INSERT, UPDATE, DELETE, REPLACE)"
         );
@@ -126,12 +133,14 @@ router.post(
 
       // Track failed API call (non-blocking)
       const latencyMs = Date.now() - startTime;
-      ctx.waitUntil(trackAnalytics(env, "/track/api-call", {
-        worker: "d1-worker",
-        endpoint: "/query",
-        latencyMs,
-        success: false,
-      }));
+      ctx.waitUntil(
+        trackAnalytics(env, "/track/api-call", {
+          worker: "d1-worker",
+          endpoint: "/query",
+          latencyMs,
+          success: false,
+        })
+      );
 
       return Errors.internal(errorMsg);
     }
@@ -179,12 +188,14 @@ router.post(
 
       // Track API call analytics (non-blocking)
       const latencyMs = Date.now() - startTime;
-      ctx.waitUntil(trackAnalytics(env, "/track/api-call", {
-        worker: "d1-worker",
-        endpoint: "/batch",
-        latencyMs,
-        success: allSuccess,
-      }));
+      ctx.waitUntil(
+        trackAnalytics(env, "/track/api-call", {
+          worker: "d1-worker",
+          endpoint: "/batch",
+          latencyMs,
+          success: allSuccess,
+        })
+      );
 
       if (!allSuccess) {
         return createJsonResponse({
@@ -201,12 +212,14 @@ router.post(
 
       // Track failed API call (non-blocking)
       const latencyMs = Date.now() - startTime;
-      ctx.waitUntil(trackAnalytics(env, "/track/api-call", {
-        worker: "d1-worker",
-        endpoint: "/batch",
-        latencyMs,
-        success: false,
-      }));
+      ctx.waitUntil(
+        trackAnalytics(env, "/track/api-call", {
+          worker: "d1-worker",
+          endpoint: "/batch",
+          latencyMs,
+          success: false,
+        })
+      );
 
       return Errors.internal(errorMsg);
     }
@@ -347,7 +360,10 @@ router.get(
         "SELECT * FROM system_logs ORDER BY timestamp DESC LIMIT 50"
       ).all();
 
-      return createJsonResponse({ success: true, logs: logsData.results || [] });
+      return createJsonResponse({
+        success: true,
+        logs: logsData.results || [],
+      });
     } catch (error) {
       const errorMsg = toError(error);
       logger.error("Logs error", { error: errorMsg });

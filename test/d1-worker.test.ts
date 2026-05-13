@@ -107,7 +107,11 @@ describe("D1 Worker", () => {
       }),
     });
 
-    const response = await d1Worker.fetch(request as any, mockEnv as any, createMockCtx() as any);
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
     expect(response.status).toBe(200);
 
     const responseData = (await response.json()) as any;
@@ -126,7 +130,11 @@ describe("D1 Worker", () => {
       }),
     });
 
-    const response = await d1Worker.fetch(request as any, mockEnv as any, createMockCtx() as any);
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
     expect(response.status).toBe(401);
 
     const responseData = (await response.json()) as any;
@@ -146,7 +154,11 @@ describe("D1 Worker", () => {
       }),
     });
 
-    const response = await d1Worker.fetch(request as any, mockEnv as any, createMockCtx() as any);
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
     expect(response.status).toBe(401);
 
     const responseData = (await response.json()) as any;
@@ -187,7 +199,11 @@ describe("D1 Worker", () => {
       body: JSON.stringify(validQueryRequest),
     });
 
-    const response = await d1Worker.fetch(request as any, mockEnv as any, createMockCtx() as any);
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
     expect(response.status).toBe(404);
   });
 
@@ -204,7 +220,11 @@ describe("D1 Worker", () => {
       }),
     });
 
-    const response = await d1Worker.fetch(request as any, mockEnv as any, createMockCtx() as any);
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
     expect(response.status).toBe(200);
 
     const responseData = (await response.json()) as any;
@@ -225,7 +245,11 @@ describe("D1 Worker", () => {
       }),
     });
 
-    const response = await d1Worker.fetch(request as any, mockEnv as any, createMockCtx() as any);
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
     expect(response.status).toBe(200);
 
     const responseData = (await response.json()) as any;
@@ -244,7 +268,11 @@ describe("D1 Worker", () => {
       body: JSON.stringify(validBatchRequest),
     });
 
-    const response = await d1Worker.fetch(request as any, mockEnv as any, createMockCtx() as any);
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
     expect(response.status).toBe(200);
 
     const responseData = (await response.json()) as any;
@@ -261,7 +289,11 @@ describe("D1 Worker", () => {
       },
     });
 
-    const response = await d1Worker.fetch(request as any, mockEnv as any, createMockCtx() as any);
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
     expect(response.status).toBe(405);
 
     const responseData = (await response.json()) as any;
