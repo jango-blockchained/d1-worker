@@ -56,7 +56,7 @@ router.post(
     const startTime = Date.now();
 
     // Internal authentication check
-    const authError = requireInternalAuth(request, env, "D1_INTERNAL_KEY");
+    const authError = requireInternalAuth(request, env, "INTERNAL_KEY_BINDING");
     if (authError) return authError;
 
     try {
@@ -154,7 +154,7 @@ router.post(
     const startTime = Date.now();
 
     // Internal authentication check
-    const authError = requireInternalAuth(request, env, "D1_INTERNAL_KEY");
+    const authError = requireInternalAuth(request, env, "INTERNAL_KEY_BINDING");
     if (authError) return authError;
 
     try {
@@ -262,7 +262,7 @@ router.get(
 router.post(
   "/api/settings",
   async (request: Request, env: Env, ctx: ExecutionContext) => {
-    const authError = requireInternalAuth(request, env, "D1_INTERNAL_KEY");
+    const authError = requireInternalAuth(request, env, "INTERNAL_KEY_BINDING");
     if (authError) return authError;
 
     try {
