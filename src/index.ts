@@ -29,7 +29,7 @@ const logger = createLogger({ service: "d1-worker", module: "router" });
 // --- Type Definitions ---
 
 interface Env extends Cloudflare.Env, AnalyticsEnv {
-  D1_INTERNAL_KEY?: string;
+  INTERNAL_KEY_BINDING?: string;
 }
 
 // --- Worker Definition ---

@@ -57,7 +57,7 @@ describe("D1 Worker", () => {
 
   const createMockEnv = (db = createMockDB(), kv = createMockKV()) => ({
     DB: db,
-    D1_INTERNAL_KEY: TEST_INTERNAL_KEY,
+    INTERNAL_KEY_BINDING: TEST_INTERNAL_KEY,
     CONFIG_KV: kv,
   });
 
@@ -168,7 +168,7 @@ describe("D1 Worker", () => {
   test("allows requests when no internal key is configured", async () => {
     const envWithoutKey = {
       DB: mockDB,
-      D1_INTERNAL_KEY: undefined,
+      INTERNAL_KEY_BINDING: undefined,
       CONFIG_KV: mockKV,
     };
     const request = new Request("https://d1-worker.workers.dev/query", {

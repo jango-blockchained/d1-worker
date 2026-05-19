@@ -1,9 +1,9 @@
 # Example environment variables for local development
-# Remove INTERNAL_SERVICE_KEY as it's no longer used for worker-to-worker auth
-# INTERNAL_SERVICE_KEY=your_internal_service_key_here
+# Remove INTERNAL_KEY_BINDING as it's no longer used for worker-to-worker auth
+# INTERNAL_KEY_BINDING=your_internal_service_key_here
 
-# D1_WORKER_URL is also likely no longer needed if calls only come via bindings
-# D1_WORKER_URL=http://127.0.0.1:8787
+# D1_SERVICE is also likely no longer needed if calls only come via bindings
+# D1_SERVICE=http://127.0.0.1:8787
 
 # Add other necessary dev variables here
 
