@@ -1,15 +1,10 @@
-import type {
-  D1Database,
-  D1Result,
-  KVNamespace,
-} from "@cloudflare/workers-types";
+import type { D1Result } from "@cloudflare/workers-types";
 import {
   Errors,
   createJsonResponse,
   toError,
 } from "@jango-blockchained/hoox-shared/errors";
 import { createRouter } from "@jango-blockchained/hoox-shared/router";
-import type { Handler } from "@jango-blockchained/hoox-shared/types/router";
 import type {
   QueryPayload,
   BatchPayload,
@@ -169,18 +164,22 @@ router.post(
         return Errors.badRequest("Missing or invalid statements array");
       }
 
-      const results = [];
+      // Validate all statements before batch execution
       for (const stmt of payload.statements) {
         if (typeof stmt.query !== "string" || !stmt.query.trim()) {
           return Errors.badRequest("Each statement must have a 'query' field");
         }
-        const result = await env.DB.prepare(stmt.query);
-        if (stmt.params && stmt.params.length > 0) {
-          result.bind(...stmt.params);
-        }
-        const response = await result.run();
-        results.push(response);
       }
+
+      // Use native DB.batch() for atomic, faster execution
+      const stmts = payload.statements.map((s) => {
+        const prepared = env.DB.prepare(s.query);
+        if (s.params && s.params.length > 0) {
+          return prepared.bind(...s.params);
+        }
+        return prepared;
+      });
+      const results = await env.DB.batch(stmts);
 
       // Check for partial failures
       const failedResult = results.find((r) => r.success === false);
@@ -230,6 +229,9 @@ router.post(
 router.get(
   "/api/settings",
   async (request: Request, env: Env, ctx: ExecutionContext) => {
+    const authError = requireInternalAuth(request, env, "INTERNAL_KEY_BINDING");
+    if (authError) return authError;
+
     try {
       const settings: Record<string, unknown> = {};
 
@@ -297,16 +299,19 @@ router.post(
 router.get(
   "/api/balances",
   async (request: Request, env: Env, ctx: ExecutionContext) => {
+    const authError = requireInternalAuth(request, env, "INTERNAL_KEY_BINDING");
+    if (authError) return authError;
+
     try {
       const latestSnapshots = await env.DB.prepare(
         `
-      SELECT b.exchange, b.asset, b.total, b.snapshot_at
+      SELECT b.exchange, b.asset, b.total, b.timestamp
       FROM balances b
       INNER JOIN (
-        SELECT exchange, asset, MAX(snapshot_at) as max_time
+        SELECT exchange, asset, MAX(timestamp) as max_time
         FROM balances
         GROUP BY exchange, asset
-      ) latest ON b.exchange = latest.exchange AND b.asset = latest.asset AND b.snapshot_at = latest.max_time
+      ) latest ON b.exchange = latest.exchange AND b.asset = latest.asset AND b.timestamp = latest.max_time
     `
       ).all();
 
@@ -334,6 +339,9 @@ router.get(
 router.get(
   "/api/positions",
   async (request: Request, env: Env, ctx: ExecutionContext) => {
+    const authError = requireInternalAuth(request, env, "INTERNAL_KEY_BINDING");
+    if (authError) return authError;
+
     try {
       const positionsData = await env.DB.prepare(
         "SELECT * FROM positions WHERE status = 'OPEN' ORDER BY updated_at DESC"
@@ -355,6 +363,9 @@ router.get(
 router.get(
   "/api/logs",
   async (request: Request, env: Env, ctx: ExecutionContext) => {
+    const authError = requireInternalAuth(request, env, "INTERNAL_KEY_BINDING");
+    if (authError) return authError;
+
     try {
       const logsData = await env.DB.prepare(
         "SELECT * FROM system_logs ORDER BY timestamp DESC LIMIT 50"
