@@ -14,6 +14,7 @@ import type { AnalyticsEnv } from "@jango-blockchained/hoox-shared/analytics";
 import {
   createLogger,
   requireInternalAuth,
+  createInternalAuthMiddleware,
   corsHeaders,
   withRequestLog,
 } from "@jango-blockchained/hoox-shared/middleware";
@@ -23,13 +24,15 @@ const logger = createLogger({ service: "d1-worker", module: "router" });
 
 // --- Type Definitions ---
 
-interface Env extends Cloudflare.Env, AnalyticsEnv {
+export interface Env extends Cloudflare.Env, AnalyticsEnv {
+  [key: string]: unknown;
   INTERNAL_KEY_BINDING?: string;
 }
 
 // --- Worker Definition ---
 
 const router = createRouter<Env>();
+const requireAuth = createInternalAuthMiddleware();
 
 // Health check endpoint
 router.get(
@@ -49,10 +52,6 @@ router.post(
   "/query",
   async (request: Request, env: Env, ctx: ExecutionContext) => {
     const startTime = Date.now();
-
-    // Internal authentication check
-    const authError = requireInternalAuth(request, env, "INTERNAL_KEY_BINDING");
-    if (authError) return authError;
 
     try {
       let payload: QueryPayload;
@@ -139,7 +138,8 @@ router.post(
 
       return Errors.internal(errorMsg);
     }
-  }
+  },
+  [requireAuth]
 );
 
 // Batch endpoint
@@ -147,10 +147,6 @@ router.post(
   "/batch",
   async (request: Request, env: Env, ctx: ExecutionContext) => {
     const startTime = Date.now();
-
-    // Internal authentication check
-    const authError = requireInternalAuth(request, env, "INTERNAL_KEY_BINDING");
-    if (authError) return authError;
 
     try {
       let payload: BatchPayload;
@@ -222,16 +218,14 @@ router.post(
 
       return Errors.internal(errorMsg);
     }
-  }
+  },
+  [requireAuth]
 );
 
 // Dashboard settings endpoint
 router.get(
   "/api/settings",
   async (request: Request, env: Env, ctx: ExecutionContext) => {
-    const authError = requireInternalAuth(request, env, "INTERNAL_KEY_BINDING");
-    if (authError) return authError;
-
     try {
       const settings: Record<string, unknown> = {};
 
@@ -257,16 +251,14 @@ router.get(
       logger.error("Settings error", { error: errorMsg });
       return Errors.internal(errorMsg);
     }
-  }
+  },
+  [requireAuth]
 );
 
 // Dashboard settings POST endpoint
 router.post(
   "/api/settings",
   async (request: Request, env: Env, ctx: ExecutionContext) => {
-    const authError = requireInternalAuth(request, env, "INTERNAL_KEY_BINDING");
-    if (authError) return authError;
-
     try {
       let payload: Record<string, unknown>;
       try {
@@ -292,16 +284,14 @@ router.post(
       logger.error("Settings POST error", { error: errorMsg });
       return Errors.internal(errorMsg);
     }
-  }
+  },
+  [requireAuth]
 );
 
 // Dashboard balances endpoint
 router.get(
   "/api/balances",
   async (request: Request, env: Env, ctx: ExecutionContext) => {
-    const authError = requireInternalAuth(request, env, "INTERNAL_KEY_BINDING");
-    if (authError) return authError;
-
     try {
       const latestSnapshots = await env.DB.prepare(
         `
@@ -332,16 +322,14 @@ router.get(
       logger.error("Balances error", { error: errorMsg });
       return Errors.internal(errorMsg);
     }
-  }
+  },
+  [requireAuth]
 );
 
 // Dashboard positions endpoint
 router.get(
   "/api/positions",
   async (request: Request, env: Env, ctx: ExecutionContext) => {
-    const authError = requireInternalAuth(request, env, "INTERNAL_KEY_BINDING");
-    if (authError) return authError;
-
     try {
       const positionsData = await env.DB.prepare(
         "SELECT * FROM positions WHERE status = 'OPEN' ORDER BY updated_at DESC"
@@ -356,16 +344,14 @@ router.get(
       logger.error("Positions error", { error: errorMsg });
       return Errors.internal(errorMsg);
     }
-  }
+  },
+  [requireAuth]
 );
 
 // Dashboard logs endpoint
 router.get(
   "/api/logs",
   async (request: Request, env: Env, ctx: ExecutionContext) => {
-    const authError = requireInternalAuth(request, env, "INTERNAL_KEY_BINDING");
-    if (authError) return authError;
-
     try {
       const logsData = await env.DB.prepare(
         "SELECT * FROM system_logs ORDER BY timestamp DESC LIMIT 50"
@@ -380,7 +366,8 @@ router.get(
       logger.error("Logs error", { error: errorMsg });
       return Errors.internal(errorMsg);
     }
-  }
+  },
+  [requireAuth]
 );
 
 export default {
