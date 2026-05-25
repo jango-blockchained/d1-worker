@@ -165,7 +165,7 @@ describe("D1 Worker", () => {
     expect(responseData.success).toBe(false);
   });
 
-  test("allows requests when no internal key is configured", async () => {
+  test("rejects requests when no internal key is configured", async () => {
     const envWithoutKey = {
       DB: mockDB,
       INTERNAL_KEY_BINDING: undefined,
@@ -183,10 +183,11 @@ describe("D1 Worker", () => {
     });
 
     const response = await d1Worker.fetch(request as any, envWithoutKey as any);
-    expect(response.status).toBe(200);
+    // Auth middleware fails closed — rejects when INTERNAL_KEY_BINDING is not configured
+    expect(response.status).toBe(401);
 
     const responseData = (await response.json()) as any;
-    expect(responseData.success).toBe(true);
+    expect(responseData.success).toBe(false);
   });
 
   test("returns 404 for unknown endpoint", async () => {
