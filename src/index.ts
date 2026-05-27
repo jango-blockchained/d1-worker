@@ -25,7 +25,65 @@ const logger = createLogger({ service: "d1-worker", module: "router" });
 // --- Type Definitions ---
 
 export interface Env extends Cloudflare.Env, AnalyticsEnv {
-  [key: string]: unknown;
+  DB: D1Database;
+  CONFIG_KV: KVNamespace;
+}
+
+// --- Security Helpers ---
+
+const TABLE_ALLOWLIST = [
+  "trade_signals",
+  "trades",
+  "positions",
+  "balances",
+  "system_logs",
+  "trade_requests",
+  "trade_responses",
+];
+
+const FORBIDDEN_KEYWORDS = [
+  "DROP",
+  "PRAGMA",
+  "ALTER",
+  "TRUNCATE",
+  "VACUUM",
+  "ATTACH",
+  "DETACH",
+];
+
+/**
+ * Validates a SQL query against an allowlist of tables and forbidden keywords.
+ * This is a basic security measure to prevent unauthorized access or destructive operations.
+ */
+function validateQuery(query: string): { valid: boolean; error?: string } {
+  const normalized = query.trim().toUpperCase();
+
+  // 1. Check for forbidden keywords
+  for (const keyword of FORBIDDEN_KEYWORDS) {
+    if (normalized.includes(keyword)) {
+      return { valid: false, error: `Forbidden keyword detected: ${keyword}` };
+    }
+  }
+
+  // 2. Basic table name extraction and validation
+  // This regex looks for words after FROM, JOIN, INTO, UPDATE
+  const tableRegex = /\b(?:FROM|JOIN|INTO|UPDATE)\s+([a-zA-Z0-9_]+)/gi;
+  let match;
+  const tablesFound = new Set<string>();
+
+  while ((match = tableRegex.exec(query)) !== null) {
+    tablesFound.add(match[1].toLowerCase());
+  }
+
+  // If no tables found, it might be a simple SELECT 1 or similar, which is fine.
+  // But if tables are found, they must be in the allowlist.
+  for (const table of tablesFound) {
+    if (!TABLE_ALLOWLIST.includes(table)) {
+      return { valid: false, error: `Unauthorized table access: ${table}` };
+    }
+  }
+
+  return { valid: true };
 }
 
 // --- Worker Definition ---
@@ -68,6 +126,16 @@ router.post(
 
       const query = payload.query.trim().toUpperCase();
       const params = payload.params || [];
+
+      // Validate query security
+      const validation = validateQuery(payload.query);
+      if (!validation.valid) {
+        logger.warn("Query validation failed", {
+          error: validation.error,
+          query: payload.query,
+        });
+        return Errors.forbidden(validation.error || "Query validation failed");
+      }
 
       logger.info("Executing D1 query", { query: payload.query });
       const stmt = env.DB.prepare(payload.query).bind(...params);
@@ -163,6 +231,17 @@ router.post(
       for (const stmt of payload.statements) {
         if (typeof stmt.query !== "string" || !stmt.query.trim()) {
           return Errors.badRequest("Each statement must have a 'query' field");
+        }
+
+        const validation = validateQuery(stmt.query);
+        if (!validation.valid) {
+          logger.warn("Batch statement validation failed", {
+            error: validation.error,
+            query: stmt.query,
+          });
+          return Errors.forbidden(
+            validation.error || "Statement validation failed"
+          );
         }
       }
 
