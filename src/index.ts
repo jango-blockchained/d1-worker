@@ -26,7 +26,6 @@ const logger = createLogger({ service: "d1-worker", module: "router" });
 
 export interface Env extends Cloudflare.Env, AnalyticsEnv {
   [key: string]: unknown;
-  INTERNAL_KEY_BINDING?: string;
 }
 
 // --- Worker Definition ---
@@ -178,7 +177,7 @@ router.post(
       const results = await env.DB.batch(stmts);
 
       // Check for partial failures
-      const failedResult = results.find((r) => r.success === false);
+      const failedResult = results.find((r) => r.error);
       const allSuccess = !failedResult;
 
       // Track API call analytics (non-blocking)
