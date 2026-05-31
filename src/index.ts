@@ -149,7 +149,24 @@ router.post(
         if (!result.success) {
           throw new Error(result.error || "D1 SELECT query failed");
         }
-        return createJsonResponse({ success: true, results: result.results });
+        const response = createJsonResponse({
+          success: true,
+          results: result.results,
+        });
+
+        // Track SELECT analytics (non-blocking)
+        const selectLatency = Date.now() - startTime;
+        ctx.waitUntil(
+          trackAnalytics(env, "/track/api-call", {
+            worker: "d1-worker",
+            endpoint: "/query",
+            latencyMs: selectLatency,
+            success: true,
+            queryType: "SELECT",
+          })
+        );
+
+        return response;
       } else if (
         query.startsWith("INSERT") ||
         query.startsWith("UPDATE") ||
@@ -178,6 +195,7 @@ router.post(
             endpoint: "/query",
             latencyMs,
             success: true,
+            queryType: "WRITE",
           })
         );
 
