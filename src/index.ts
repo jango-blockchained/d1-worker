@@ -17,6 +17,7 @@ import {
   createInternalAuthMiddleware,
   corsHeaders,
   withRequestLog,
+  type Logger,
 } from "@jango-blockchained/hoox-shared/middleware";
 import { healthCheck } from "@jango-blockchained/hoox-shared/health";
 
@@ -366,63 +367,86 @@ router.post(
   [requireAuth]
 );
 
+// --- Extracted Handler Functions ---
+
+async function handleGetBalances(env: Env, logger: Logger): Promise<Response> {
+  try {
+    const latestSnapshots = await env.DB.prepare(
+      `
+    SELECT b.exchange, b.asset, b.total, b.timestamp
+    FROM balances b
+    INNER JOIN (
+      SELECT exchange, asset, MAX(timestamp) as max_time
+      FROM balances
+      GROUP BY exchange, asset
+    ) latest ON b.exchange = latest.exchange AND b.asset = latest.asset AND b.timestamp = latest.max_time
+  `
+    ).all();
+
+    const totalBalance = (latestSnapshots.results || []).reduce(
+      (sum: number, row: Record<string, unknown>) => {
+        return sum + ((row.total as number) || 0);
+      },
+      0
+    );
+
+    return createJsonResponse({
+      success: true,
+      totalBalance,
+      balances: latestSnapshots.results || [],
+    });
+  } catch (error) {
+    const errorMsg = toError(error);
+    logger.error("Balances error", { error: errorMsg });
+    return Errors.internal(errorMsg);
+  }
+}
+
+async function handleGetPositions(env: Env, logger: Logger): Promise<Response> {
+  try {
+    const positionsData = await env.DB.prepare(
+      "SELECT * FROM positions WHERE status = 'OPEN' ORDER BY updated_at DESC"
+    ).all();
+
+    return createJsonResponse({
+      success: true,
+      positions: positionsData.results || [],
+    });
+  } catch (error) {
+    const errorMsg = toError(error);
+    logger.error("Positions error", { error: errorMsg });
+    return Errors.internal(errorMsg);
+  }
+}
+
 // Dashboard balances endpoint
 router.get(
   "/api/balances",
-  async (request: Request, env: Env, ctx: ExecutionContext) => {
-    try {
-      const latestSnapshots = await env.DB.prepare(
-        `
-      SELECT b.exchange, b.asset, b.total, b.timestamp
-      FROM balances b
-      INNER JOIN (
-        SELECT exchange, asset, MAX(timestamp) as max_time
-        FROM balances
-        GROUP BY exchange, asset
-      ) latest ON b.exchange = latest.exchange AND b.asset = latest.asset AND b.timestamp = latest.max_time
-    `
-      ).all();
-
-      const totalBalance = (latestSnapshots.results || []).reduce(
-        (sum: number, row: Record<string, unknown>) => {
-          return sum + ((row.total as number) || 0);
-        },
-        0
-      );
-
-      return createJsonResponse({
-        success: true,
-        totalBalance,
-        balances: latestSnapshots.results || [],
-      });
-    } catch (error) {
-      const errorMsg = toError(error);
-      logger.error("Balances error", { error: errorMsg });
-      return Errors.internal(errorMsg);
-    }
-  },
+  async (request: Request, env: Env, ctx: ExecutionContext) =>
+    handleGetBalances(env, logger),
   [requireAuth]
 );
 
 // Dashboard positions endpoint
 router.get(
   "/api/positions",
-  async (request: Request, env: Env, ctx: ExecutionContext) => {
-    try {
-      const positionsData = await env.DB.prepare(
-        "SELECT * FROM positions WHERE status = 'OPEN' ORDER BY updated_at DESC"
-      ).all();
+  async (request: Request, env: Env, ctx: ExecutionContext) =>
+    handleGetPositions(env, logger),
+  [requireAuth]
+);
 
-      return createJsonResponse({
-        success: true,
-        positions: positionsData.results || [],
-      });
-    } catch (error) {
-      const errorMsg = toError(error);
-      logger.error("Positions error", { error: errorMsg });
-      return Errors.internal(errorMsg);
-    }
-  },
+// Dashboard-prefixed aliases for agent-worker compatibility
+router.get(
+  "/api/dashboard/balances",
+  async (request: Request, env: Env, ctx: ExecutionContext) =>
+    handleGetBalances(env, logger),
+  [requireAuth]
+);
+
+router.get(
+  "/api/dashboard/positions",
+  async (request: Request, env: Env, ctx: ExecutionContext) =>
+    handleGetPositions(env, logger),
   [requireAuth]
 );
 

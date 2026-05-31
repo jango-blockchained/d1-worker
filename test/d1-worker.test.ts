@@ -281,6 +281,66 @@ describe("D1 Worker", () => {
     expect(responseData.results).toBeDefined();
   });
 
+  test("GET /api/dashboard/positions returns open positions", async () => {
+    const request = new Request(
+      "https://d1-worker.workers.dev/api/dashboard/positions",
+      {
+        method: "GET",
+        headers: { "X-Internal-Auth-Key": TEST_INTERNAL_KEY },
+      }
+    );
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as any;
+    expect(data.success).toBe(true);
+    expect(data.positions).toBeDefined();
+  });
+
+  test("GET /api/dashboard/balances returns balance snapshots", async () => {
+    const request = new Request(
+      "https://d1-worker.workers.dev/api/dashboard/balances",
+      {
+        method: "GET",
+        headers: { "X-Internal-Auth-Key": TEST_INTERNAL_KEY },
+      }
+    );
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as any;
+    expect(data.success).toBe(true);
+    expect(data.totalBalance).toBeDefined();
+    expect(data.balances).toBeDefined();
+  });
+
+  test("both /api/positions and /api/dashboard/positions return same structure", async () => {
+    const req1 = new Request("https://d1-worker.workers.dev/api/positions", {
+      method: "GET",
+      headers: { "X-Internal-Auth-Key": TEST_INTERNAL_KEY },
+    });
+    const req2 = new Request(
+      "https://d1-worker.workers.dev/api/dashboard/positions",
+      {
+        method: "GET",
+        headers: { "X-Internal-Auth-Key": TEST_INTERNAL_KEY },
+      }
+    );
+    const [res1, res2] = await Promise.all([
+      d1Worker.fetch(req1 as any, mockEnv as any, createMockCtx() as any),
+      d1Worker.fetch(req2 as any, mockEnv as any, createMockCtx() as any),
+    ]);
+    const data1 = await res1.json();
+    const data2 = await res2.json();
+    expect(data1).toEqual(data2);
+  });
+
   test("rejects unsupported methods", async () => {
     const request = new Request("https://d1-worker.workers.dev/query", {
       method: "GET",
