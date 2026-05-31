@@ -514,7 +514,7 @@ export default {
     ): Promise<Response> => {
       const cors = corsHeaders();
       if (request.method === "OPTIONS") {
-        return new Response(null, { headers: cors });
+        return new Response(null, { status: 204, headers: cors });
       }
       const response = await router.handle(request, env, ctx);
       const newResponse = new Response(response.body, response);

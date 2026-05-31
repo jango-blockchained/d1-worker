@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeEach, mock, jest } from "bun:test";
+import { describe, expect, test, beforeEach, mock } from "bun:test";
 import d1Worker from "../src/index.js";
 
 describe("D1 Worker", () => {
@@ -208,6 +208,206 @@ describe("D1 Worker", () => {
     expect(response.status).toBe(404);
   });
 
+  test("GET /health returns healthy status when DB is reachable", async () => {
+    const request = new Request("https://d1-worker.workers.dev/health", {
+      method: "GET",
+    });
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as any;
+    expect(data.success).toBe(true);
+    expect(data.result.status).toBe("ok");
+    expect(data.result.service).toBe("d1-worker");
+  });
+
+  test("GET /health returns 500 when DB is unreachable", async () => {
+    const failingStmt = createMockPreparedStatement();
+    failingStmt.first = mock(() =>
+      Promise.reject(new Error("Connection failed"))
+    );
+    const failingDB = createMockDB(failingStmt);
+    const env = createMockEnv(failingDB, mockKV);
+    const request = new Request("https://d1-worker.workers.dev/health", {
+      method: "GET",
+    });
+    const response = await d1Worker.fetch(
+      request as any,
+      env as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(500);
+  });
+
+  test("GET /api/settings returns KV config settings", async () => {
+    const kvWithData = createMockKV();
+    (kvWithData.list as ReturnType<typeof mock>).mockImplementation(
+      (options?: { prefix?: string }) => {
+        if (options?.prefix === "global:") {
+          return Promise.resolve({
+            keys: [{ name: "global:test-key", expiration: 0 }],
+          });
+        }
+        return Promise.resolve({ keys: [] });
+      }
+    );
+    (kvWithData.get as ReturnType<typeof mock>).mockImplementation(
+      (key: string) => {
+        if (key === "global:test-key") return Promise.resolve('"hello"');
+        return Promise.resolve(null);
+      }
+    );
+    const env = createMockEnv(mockDB, kvWithData);
+    const request = new Request("https://d1-worker.workers.dev/api/settings", {
+      method: "GET",
+      headers: { "X-Internal-Auth-Key": TEST_INTERNAL_KEY },
+    });
+    const response = await d1Worker.fetch(
+      request as any,
+      env as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as any;
+    expect(data.success).toBe(true);
+    expect(data.settings).toBeDefined();
+    expect(data.settings["global:test-key"]).toBe("hello");
+  });
+
+  test("POST /api/settings writes to KV config", async () => {
+    const request = new Request("https://d1-worker.workers.dev/api/settings", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
+      },
+      body: JSON.stringify({
+        key: "test-key",
+        value: "test-value",
+        worker: "default",
+      }),
+    });
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as any;
+    expect(data.success).toBe(true);
+    expect(data.key).toBe("default:test-key");
+  });
+
+  test("POST /api/settings rejects missing key", async () => {
+    const request = new Request("https://d1-worker.workers.dev/api/settings", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
+      },
+      body: JSON.stringify({ value: "test" }),
+    });
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(400);
+  });
+
+  test("rejects queries with DROP keyword", async () => {
+    const request = new Request("https://d1-worker.workers.dev/query", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
+      },
+      body: JSON.stringify({ query: "DROP TABLE trades", params: [] }),
+    });
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(403);
+    const data = (await response.json()) as any;
+    expect(data.success).toBe(false);
+    expect(data.error).toContain("DROP");
+  });
+
+  test("rejects queries referencing unauthorized tables", async () => {
+    const request = new Request("https://d1-worker.workers.dev/query", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
+      },
+      body: JSON.stringify({ query: "SELECT * FROM secret_table", params: [] }),
+    });
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(403);
+    const data = (await response.json()) as any;
+    expect(data.success).toBe(false);
+    expect(data.error).toContain("Unauthorized table");
+  });
+
+  test("rejects unsupported query types like CREATE", async () => {
+    const request = new Request("https://d1-worker.workers.dev/query", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
+      },
+      body: JSON.stringify({
+        query: "CREATE TABLE test (id INTEGER)",
+        params: [],
+      }),
+    });
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(400);
+    const data = (await response.json()) as any;
+    expect(data.success).toBe(false);
+    expect(data.error).toContain("Unsupported query type");
+  });
+
+  test("handles OPTIONS preflight request", async () => {
+    const request = new Request("https://d1-worker.workers.dev/query", {
+      method: "OPTIONS",
+    });
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(204);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    expect(response.headers.get("Access-Control-Allow-Methods")).toBeDefined();
+  });
+
+  test("includes CORS headers on health responses", async () => {
+    const request = new Request("https://d1-worker.workers.dev/health", {
+      method: "GET",
+    });
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+  });
+
   test("handles SELECT query", async () => {
     const request = new Request("https://d1-worker.workers.dev/query", {
       method: "POST",
@@ -279,6 +479,46 @@ describe("D1 Worker", () => {
     const responseData = (await response.json()) as any;
     expect(responseData.success).toBe(true);
     expect(responseData.results).toBeDefined();
+  });
+
+  test("batch rejects statements missing query field", async () => {
+    const request = new Request("https://d1-worker.workers.dev/batch", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
+      },
+      body: JSON.stringify({
+        statements: [{ params: ["POST", "/trade"] }],
+      }),
+    });
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(400);
+  });
+
+  test("batch rejects statements with forbidden keywords", async () => {
+    const request = new Request("https://d1-worker.workers.dev/batch", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
+      },
+      body: JSON.stringify({
+        statements: [
+          { query: "ALTER TABLE trades ADD COLUMN x INTEGER", params: [] },
+        ],
+      }),
+    });
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(403);
   });
 
   test("GET /api/dashboard/positions returns open positions", async () => {
