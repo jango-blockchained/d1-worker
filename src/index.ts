@@ -20,6 +20,7 @@ import {
   type Logger,
 } from "@jango-blockchained/hoox-shared/middleware";
 import { healthCheck } from "@jango-blockchained/hoox-shared/health";
+import { computeDashboardStats } from "./stats";
 
 const logger = createLogger({ service: "d1-worker", module: "router" });
 
@@ -468,6 +469,20 @@ router.get(
       logger.error("Logs error", { error: errorMsg });
       return Errors.internal(errorMsg);
     }
+  },
+  [requireAuth]
+);
+
+// Dashboard stats endpoint
+router.get(
+  "/api/dashboard/stats",
+  async (request: Request, env: Env, ctx: ExecutionContext) => {
+    const result = await computeDashboardStats(env.DB);
+    if ("error" in result) {
+      logger.error("Dashboard stats error", { error: result.error });
+      return Errors.internal(result.error);
+    }
+    return createJsonResponse({ success: true, stats: result.stats });
   },
   [requireAuth]
 );

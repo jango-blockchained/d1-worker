@@ -341,6 +341,45 @@ describe("D1 Worker", () => {
     expect(data1).toEqual(data2);
   });
 
+  test("GET /api/dashboard/stats returns aggregated statistics", async () => {
+    const request = new Request(
+      "https://d1-worker.workers.dev/api/dashboard/stats",
+      {
+        method: "GET",
+        headers: { "X-Internal-Auth-Key": TEST_INTERNAL_KEY },
+      }
+    );
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as any;
+    expect(data.success).toBe(true);
+    expect(data.stats).toBeDefined();
+    expect(typeof data.stats.totalTrades).toBe("number");
+    expect(typeof data.stats.winRate).toBe("number");
+    expect(typeof data.stats.totalPnlUSDT).toBe("number");
+    expect(typeof data.stats.activePositionsCount).toBe("number");
+    expect(typeof data.stats.dailyTradesCount).toBe("number");
+  });
+
+  test("GET /api/dashboard/stats requires auth", async () => {
+    const request = new Request(
+      "https://d1-worker.workers.dev/api/dashboard/stats",
+      {
+        method: "GET",
+      }
+    );
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(401);
+  });
+
   test("rejects unsupported methods", async () => {
     const request = new Request("https://d1-worker.workers.dev/query", {
       method: "GET",
