@@ -29,6 +29,7 @@ export interface Env extends Cloudflare.Env {
   [key: string]: unknown;
   DB: D1Database;
   CONFIG_KV: KVNamespace;
+  LOG_LIMIT?: string; // Optional binding, defaults to "50"
 }
 
 // --- Security Helpers ---
@@ -88,6 +89,26 @@ function validateQuery(query: string): { valid: boolean; error?: string } {
   return { valid: true };
 }
 
+/**
+ * Checks that the request has a JSON Content-Type and a reasonable body size.
+ * Returns a Response (error) if validation fails, or null if the body is acceptable.
+ */
+function requireJsonBody(request: Request): Response | null {
+  const contentType = request.headers.get("Content-Type") || "";
+  if (!contentType.includes("application/json")) {
+    return Errors.badRequest("Content-Type must be application/json");
+  }
+  // Check body size roughly (Content-Length header)
+  const contentLength = request.headers.get("Content-Length");
+  if (contentLength) {
+    const size = parseInt(contentLength, 10);
+    if (isNaN(size) || size > 1024 * 1024) {
+      return Errors.badRequest("Request body too large (max 1MB)");
+    }
+  }
+  return null;
+}
+
 // --- Worker Definition ---
 
 const router = createRouter<Env>();
@@ -113,6 +134,9 @@ router.post(
     const startTime = Date.now();
 
     try {
+      const bodyGuard = requireJsonBody(request);
+      if (bodyGuard) return bodyGuard;
+
       let payload: QueryPayload;
       try {
         payload = await request.json();
@@ -236,6 +260,9 @@ router.post(
     const startTime = Date.now();
 
     try {
+      const bodyGuard = requireJsonBody(request);
+      if (bodyGuard) return bodyGuard;
+
       let payload: BatchPayload;
       try {
         payload = await request.json();
@@ -358,6 +385,9 @@ router.post(
   "/api/settings",
   async (request: Request, env: Env, ctx: ExecutionContext) => {
     try {
+      const bodyGuard = requireJsonBody(request);
+      if (bodyGuard) return bodyGuard;
+
       let payload: Record<string, unknown>;
       try {
         payload = await request.json();
@@ -474,9 +504,15 @@ router.get(
   "/api/logs",
   async (request: Request, env: Env, ctx: ExecutionContext) => {
     try {
+      const limit = Math.min(
+        Math.max(parseInt(env.LOG_LIMIT || "50", 10) || 50, 1),
+        1000
+      );
       const logsData = await env.DB.prepare(
-        "SELECT * FROM system_logs ORDER BY timestamp DESC LIMIT 50"
-      ).all();
+        "SELECT id, timestamp, level, module, message, context FROM system_logs ORDER BY timestamp DESC LIMIT ?"
+      )
+        .bind(limit)
+        .all();
 
       return createJsonResponse({
         success: true,

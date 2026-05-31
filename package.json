@@ -2,6 +2,7 @@
   "name": "d1-worker",
   "version": "1.0.0",
   "description": "Database service for cryptocurrency trading operations",
+  "license": "MIT",
   "main": "src/index.js",
   "type": "module",
   "scripts": {

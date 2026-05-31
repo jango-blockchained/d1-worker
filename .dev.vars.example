@@ -1,12 +1,8 @@
 # Example environment variables for local development
-# Remove INTERNAL_KEY_BINDING as it's no longer used for worker-to-worker auth
-# INTERNAL_KEY_BINDING=your_internal_service_key_here
-
-# D1_SERVICE is also likely no longer needed if calls only come via bindings
-# D1_SERVICE=http://127.0.0.1:8787
-
-# Add other necessary dev variables here
-
-# Note: This file provides example values for local development.
 # Copy this file to .dev.vars and replace with your actual values.
-# .dev.vars is ignored by git to prevent committing sensitive information. 
+
+# Internal auth key used by createInternalAuthMiddleware()
+# Must match the value in wrangler.jsonc vars.INTERNAL_KEY_BINDING
+INTERNAL_KEY_BINDING=your_internal_service_key_here
+
+# Note: .dev.vars is ignored by git to prevent committing sensitive information.
