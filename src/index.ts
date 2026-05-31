@@ -10,7 +10,6 @@ import type {
   BatchPayload,
 } from "@jango-blockchained/hoox-shared/types";
 import { trackAnalytics } from "@jango-blockchained/hoox-shared/analytics";
-import type { AnalyticsEnv } from "@jango-blockchained/hoox-shared/analytics";
 import {
   createLogger,
   requireInternalAuth,
@@ -26,7 +25,8 @@ const logger = createLogger({ service: "d1-worker", module: "router" });
 
 // --- Type Definitions ---
 
-export interface Env extends Cloudflare.Env, AnalyticsEnv {
+export interface Env extends Cloudflare.Env {
+  [key: string]: unknown;
   DB: D1Database;
   CONFIG_KV: KVNamespace;
 }
