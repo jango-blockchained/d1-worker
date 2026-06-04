@@ -27,8 +27,10 @@
       "database_id": "a682f084-594e-4bd8-be2d-40ea5f8cf42e"
     }
   ],
+  // NOTE: Secrets must be created via `wrangler secret put <NAME>`.
   "vars": {
-    "INTERNAL_KEY_BINDING": "__SECRET__"
+    // Secrets - create via: wrangler secret put INTERNAL_KEY_BINDING
+    "INTERNAL_KEY_BINDING": null
   },
   "kv_namespaces": [
     {

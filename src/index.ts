@@ -57,6 +57,16 @@ const FORBIDDEN_KEYWORDS = [
 /**
  * Validates a SQL query against an allowlist of tables and forbidden keywords.
  * This is a basic security measure to prevent unauthorized access or destructive operations.
+ *
+ * SECURITY MODEL:
+ * - Blocklist: Prevents dangerous keywords (DROP, PRAGMA, ALTER, etc.)
+ * - Allowlist: Only permits queries against known safe tables
+ *
+ * LIMITATIONS:
+ * - Does NOT prevent SQL injection within parameterized values
+ * - Relies on D1's parameter binding for value-level protection
+ * - Table allowlist must be manually updated when schema changes
+ * - Does NOT validate query structure beyond table names
  */
 function validateQuery(query: string): { valid: boolean; error?: string } {
   const normalized = query.trim().toUpperCase();
@@ -70,6 +80,7 @@ function validateQuery(query: string): { valid: boolean; error?: string } {
 
   // 2. Basic table name extraction and validation
   // This regex looks for words after FROM, JOIN, INTO, UPDATE
+  // NOTE: Does NOT validate subqueries or nested SELECT statements
   const tableRegex = /\b(?:FROM|JOIN|INTO|UPDATE)\s+([a-zA-Z0-9_]+)/gi;
   let match;
   const tablesFound = new Set<string>();
