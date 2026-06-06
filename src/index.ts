@@ -12,10 +12,10 @@ import type {
 import { trackAnalytics } from "@jango-blockchained/hoox-shared/analytics";
 import {
   createLogger,
-  requireInternalAuth,
   createInternalAuthMiddleware,
   corsHeaders,
   withRequestLog,
+  wrapWithSecurityHeaders,
   type Logger,
 } from "@jango-blockchained/hoox-shared/middleware";
 import { healthCheck } from "@jango-blockchained/hoox-shared/health";
@@ -44,57 +44,121 @@ const TABLE_ALLOWLIST = [
   "trade_responses",
 ];
 
-const FORBIDDEN_KEYWORDS = [
-  "DROP",
-  "PRAGMA",
-  "ALTER",
-  "TRUNCATE",
-  "VACUUM",
-  "ATTACH",
-  "DETACH",
-];
+/**
+ * Strips SQL comments from a query string to prevent comment-based bypass
+ * of validation checks. Handles both single-line (--) and multi-line (/* * /) comments.
+ */
+function stripSqlComments(sql: string): string {
+  let result = "";
+  let i = 0;
+  while (i < sql.length) {
+    // Single-line comment: --
+    if (sql[i] === "-" && sql[i + 1] === "-") {
+      i += 2;
+      while (i < sql.length && sql[i] !== "\n") i++;
+      continue;
+    }
+    // Multi-line comment: /* */
+    if (sql[i] === "/" && sql[i + 1] === "*") {
+      i += 2;
+      while (i < sql.length && !(sql[i] === "*" && sql[i + 1] === "/")) i++;
+      i += 2;
+      continue;
+    }
+    result += sql[i];
+    i++;
+  }
+  return result;
+}
 
 /**
- * Validates a SQL query against an allowlist of tables and forbidden keywords.
- * This is a basic security measure to prevent unauthorized access or destructive operations.
+ * Validates a SQL query for security.
  *
  * SECURITY MODEL:
- * - Blocklist: Prevents dangerous keywords (DROP, PRAGMA, ALTER, etc.)
- * - Allowlist: Only permits queries against known safe tables
- *
- * LIMITATIONS:
- * - Does NOT prevent SQL injection within parameterized values
- * - Relies on D1's parameter binding for value-level protection
- * - Table allowlist must be manually updated when schema changes
- * - Does NOT validate query structure beyond table names
+ * - SQL comments are stripped before validation to prevent bypasses
+ * - Only SELECT queries are allowed (writes use parameterized prepared statements)
+ * - String literals in query are rejected -> all values must use ? placeholders
+ * - Table names validated against allowlist -> 403 Forbidden
+ * - UNION and subqueries in WHERE/HAVING are restricted -> 403 Forbidden
  */
-function validateQuery(query: string): { valid: boolean; error?: string } {
-  const normalized = query.trim().toUpperCase();
+function validateQuery(query: string): {
+  valid: boolean;
+  error?: string;
+  statusCode?: number;
+} {
+  // 0. Strip SQL comments to prevent comment-based bypass of validation
+  const cleaned = stripSqlComments(query);
+  const normalized = cleaned.trim().toUpperCase();
 
-  // 1. Check for forbidden keywords
-  for (const keyword of FORBIDDEN_KEYWORDS) {
-    if (normalized.includes(keyword)) {
-      return { valid: false, error: `Forbidden keyword detected: ${keyword}` };
-    }
+  // 1. Check query type - only SELECT queries are allowed
+  const queryType = normalized.split(/\s+/)[0];
+  if (queryType !== "SELECT") {
+    return {
+      valid: false,
+      error: `Unsupported query type: ${queryType}. Only SELECT queries are allowed.`,
+      statusCode: 400,
+    };
   }
 
-  // 2. Basic table name extraction and validation
-  // This regex looks for words after FROM, JOIN, INTO, UPDATE
-  // NOTE: Does NOT validate subqueries or nested SELECT statements
+  // 2. Reject string literals - all values must use ? parameter placeholders -> 400
+  // Prevents injection via string concatenation like: WHERE id = '1' OR '1'='1'
+  const stringLiteralRegex = /'([^']|'')*'/g;
+  if (stringLiteralRegex.test(cleaned)) {
+    return {
+      valid: false,
+      error:
+        "String literals not allowed in query. Use parameter placeholders (?) instead.",
+      statusCode: 400,
+    };
+  }
+
+  // 3. Reject double-quoted identifiers -> 400
+  const doubleQuotedRegex = /"[^"]*"/g;
+  if (doubleQuotedRegex.test(cleaned)) {
+    return {
+      valid: false,
+      error: "Quoted identifiers not allowed in query.",
+      statusCode: 400,
+    };
+  }
+
+  // 4. Validate table names against allowlist -> 403
+  // Extract table names from FROM, JOIN, INTO, UPDATE clauses
   const tableRegex = /\b(?:FROM|JOIN|INTO|UPDATE)\s+([a-zA-Z0-9_]+)/gi;
   let match;
   const tablesFound = new Set<string>();
 
-  while ((match = tableRegex.exec(query)) !== null) {
+  while ((match = tableRegex.exec(cleaned)) !== null) {
     tablesFound.add(match[1].toLowerCase());
   }
 
-  // If no tables found, it might be a simple SELECT 1 or similar, which is fine.
-  // But if tables are found, they must be in the allowlist.
+  // If tables are found, they must be in the allowlist
   for (const table of tablesFound) {
     if (!TABLE_ALLOWLIST.includes(table)) {
-      return { valid: false, error: `Unauthorized table access: ${table}` };
+      return {
+        valid: false,
+        error: `Unauthorized table access: ${table}`,
+        statusCode: 403,
+      };
     }
+  }
+
+  // 5. Reject UNION (can be used for data exfiltration) -> 403
+  if (/\bUNION\b/i.test(cleaned)) {
+    return {
+      valid: false,
+      error: "UNION not allowed in SELECT queries",
+      statusCode: 403,
+    };
+  }
+
+  // 6. Reject subqueries in WHERE/HAVING (complexity/DoS risk) -> 403
+  if (/\b(WHERE|HAVING)\s*\(/i.test(cleaned)) {
+    return {
+      valid: false,
+      error: "Subqueries in WHERE/HAVING not allowed",
+      statusCode: 403,
+    };
   }
 
   return { valid: true };
@@ -171,6 +235,12 @@ router.post(
           error: validation.error,
           query: payload.query,
         });
+        const statusCode = validation.statusCode || 403;
+        if (statusCode === 400) {
+          return Errors.badRequest(
+            validation.error || "Query validation failed"
+          );
+        }
         return Errors.forbidden(validation.error || "Query validation failed");
       }
 
@@ -297,6 +367,12 @@ router.post(
             error: validation.error,
             query: stmt.query,
           });
+          const statusCode = validation.statusCode || 403;
+          if (statusCode === 400) {
+            return Errors.badRequest(
+              validation.error || "Statement validation failed"
+            );
+          }
           return Errors.forbidden(
             validation.error || "Statement validation failed"
           );
@@ -561,14 +637,21 @@ export default {
     ): Promise<Response> => {
       const cors = corsHeaders();
       if (request.method === "OPTIONS") {
-        return new Response(null, { status: 204, headers: cors });
+        return wrapWithSecurityHeaders(
+          new Response(null, { status: 204, headers: cors })
+        );
       }
-      const response = await router.handle(request, env, ctx);
-      const newResponse = new Response(response.body, response);
-      for (const [key, value] of Object.entries(cors)) {
-        newResponse.headers.set(key, value);
+      try {
+        const response = await router.handle(request, env, ctx);
+        const newResponse = new Response(response.body, response);
+        for (const [key, value] of Object.entries(cors)) {
+          newResponse.headers.set(key, value);
+        }
+        return wrapWithSecurityHeaders(newResponse);
+      } catch (error) {
+        logger.error("Unhandled router error", { error: toError(error) });
+        return wrapWithSecurityHeaders(Errors.internal(toError(error)));
       }
-      return newResponse;
     },
     { service: "d1-worker", module: "router" }
   ),

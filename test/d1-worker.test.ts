@@ -79,20 +79,6 @@ describe("D1 Worker", () => {
     params: [123],
   };
 
-  // Valid batch request payload
-  const validBatchRequest = {
-    statements: [
-      {
-        query: "INSERT INTO trade_requests (method, path) VALUES (?, ?)",
-        params: ["POST", "/trade"],
-      },
-      {
-        query: "UPDATE trade_responses SET error = ? WHERE request_id = ?",
-        params: ["Connection timeout", 123],
-      },
-    ],
-  };
-
   // Remove tests related to internal service key validation
   test("allows request when internal auth key is provided", async () => {
     const request = new Request("https://d1-worker.workers.dev/query", {
@@ -332,10 +318,11 @@ describe("D1 Worker", () => {
       mockEnv as any,
       createMockCtx() as any
     );
-    expect(response.status).toBe(403);
+    // DROP is now an unsupported query type (only SELECT allowed)
+    expect(response.status).toBe(400);
     const data = (await response.json()) as any;
     expect(data.success).toBe(false);
-    expect(data.error).toContain("DROP");
+    expect(data.error).toContain("Unsupported query type");
   });
 
   test("rejects queries referencing unauthorized tables", async () => {
@@ -433,7 +420,7 @@ describe("D1 Worker", () => {
     expect(responseData.results).toBeDefined();
   });
 
-  test("handles INSERT query", async () => {
+  test("rejects INSERT query (only SELECT allowed)", async () => {
     const request = new Request("https://d1-worker.workers.dev/query", {
       method: "POST",
       headers: {
@@ -451,12 +438,11 @@ describe("D1 Worker", () => {
       mockEnv as any,
       createMockCtx() as any
     );
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(400);
 
     const responseData = (await response.json()) as any;
-    expect(responseData.success).toBe(true);
-    expect(responseData.lastRowId).toBeDefined();
-    expect(responseData.changes).toBeDefined();
+    expect(responseData.success).toBe(false);
+    expect(responseData.error).toContain("Unsupported query type");
   });
 
   test("handles batch operations", async () => {
@@ -466,7 +452,18 @@ describe("D1 Worker", () => {
         "Content-Type": "application/json",
         "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
       },
-      body: JSON.stringify(validBatchRequest),
+      body: JSON.stringify({
+        statements: [
+          {
+            query: "SELECT * FROM trade_requests WHERE id = ?",
+            params: [1],
+          },
+          {
+            query: "SELECT * FROM trade_signals ORDER BY id DESC LIMIT ?",
+            params: [10],
+          },
+        ],
+      }),
     });
 
     const response = await d1Worker.fetch(
@@ -500,7 +497,7 @@ describe("D1 Worker", () => {
     expect(response.status).toBe(400);
   });
 
-  test("batch rejects statements with forbidden keywords", async () => {
+  test("batch rejects unsupported query types", async () => {
     const request = new Request("https://d1-worker.workers.dev/batch", {
       method: "POST",
       headers: {
@@ -518,7 +515,7 @@ describe("D1 Worker", () => {
       mockEnv as any,
       createMockCtx() as any
     );
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(400);
   });
 
   test("GET /api/dashboard/positions returns open positions", async () => {
