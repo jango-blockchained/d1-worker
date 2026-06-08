@@ -1,6 +1,6 @@
 {
+  // D1 Worker — database operations for the trade data D1 database
   "name": "d1-worker",
-  // ACCOUNT_ID: Get from Cloudflare Dashboard > Overview > Account ID
   "account_id": "YOUR_ACCOUNT_ID",
   "main": "src/index.ts",
   "alias": {
@@ -8,48 +8,39 @@
     "@jango-blockchained/hoox-shared/middleware": "../../packages/shared/src/middleware/index.ts",
     "@jango-blockchained/hoox-shared/router": "../../packages/shared/src/router.ts",
     "@jango-blockchained/hoox-shared/types": "../../packages/shared/src/types.ts",
+    "@jango-blockchained/hoox-shared/analytics": "../../packages/shared/src/analytics.ts",
+    "@jango-blockchained/hoox-shared/health": "../../packages/shared/src/health.ts",
     "@jango-blockchained/hoox-shared/types/router": "../../packages/shared/src/types/router.ts"
   },
-  "compatibility_date": "2025-03-07",
+  "compatibility_date": "2026-06-08",
   "compatibility_flags": ["nodejs_compat"],
-
-  // PLACEMENT: Smart Placement for reduced latency (free, all plans)
   "placement": {
     "mode": "smart"
   },
-
-  // OBSERVABILITY: Enable logging and sampling
   "observability": {
     "enabled": true,
-    "head_sampling_rate": 1
+    "logs": { "enabled": true, "head_sampling_rate": 1 },
+    "traces": { "enabled": true, "head_sampling_rate": 0.01 }
   },
-
-  // D1_DATABASES: SQLite database for trade data
-  // DATABASE_ID: Get from Cloudflare Dashboard > D1 > Databases
   "d1_databases": [
     {
       "binding": "DB",
-      // DATABASE_NAME: Your D1 database name
-      "database_name": "YOUR_DATABASE_NAME",
-      // DATABASE_ID: Your D1 database ID (UUID)
+      "database_name": "trade-data-db",
       "database_id": "YOUR_DATABASE_ID"
     }
   ],
-
-  // KV_NAMESPACES: Key-Value storage for config (optional)
+  // NOTE: Secrets must be created via `wrangler secret put <NAME>`.
+  "vars": {},
   "kv_namespaces": [
     {
       "binding": "CONFIG_KV",
       "id": "YOUR_CONFIG_KV_ID"
     }
+  ],
+  "services": [
+    {
+      "binding": "ANALYTICS_SERVICE",
+      "service": "analytics-worker"
+    }
   ]
-
-  // HYPERDRIVE: Connection pooling for external databases ($5/mo add-on)
-  // Create via: wrangler hyperdrive create <name> --connection-string="..."
-  // "hyperdrive": [
-  //   {
-  //     "binding": "HYPERDRIVE",
-  //     "id": "YOUR_HYPERDRIVE_ID"
-  //   }
-  // ]
 }
