@@ -11,14 +11,15 @@
     "@jango-blockchained/hoox-shared/health": "../../packages/shared/src/health.ts",
     "@jango-blockchained/hoox-shared/types/router": "../../packages/shared/src/types/router.ts"
   },
-  "compatibility_date": "2026-04-17",
+  "compatibility_date": "2026-06-08",
   "compatibility_flags": ["nodejs_compat"],
   "placement": {
     "mode": "smart"
   },
   "observability": {
     "enabled": true,
-    "head_sampling_rate": 1
+    "logs": { "enabled": true, "head_sampling_rate": 1 },
+    "traces": { "enabled": true, "head_sampling_rate": 0.01 }
   },
   "d1_databases": [
     {
@@ -28,10 +29,7 @@
     }
   ],
   // NOTE: Secrets must be created via `wrangler secret put <NAME>`.
-  "vars": {
-    // Secrets - create via: wrangler secret put INTERNAL_KEY_BINDING
-    "INTERNAL_KEY_BINDING": null
-  },
+  "vars": {},
   "kv_namespaces": [
     {
       "binding": "CONFIG_KV",

@@ -26,7 +26,6 @@ const logger = createLogger({ service: "d1-worker", module: "router" });
 // --- Type Definitions ---
 
 export interface Env extends Cloudflare.Env {
-  [key: string]: unknown;
   DB: D1Database;
   CONFIG_KV: KVNamespace;
   LOG_LIMIT?: string; // Optional binding, defaults to "50"
@@ -225,7 +224,6 @@ router.post(
         );
       }
 
-      const query = payload.query.trim().toUpperCase();
       const params = payload.params || [];
 
       // Validate query security
