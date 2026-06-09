@@ -246,7 +246,7 @@ router.post(
       const stmt = env.DB.prepare(payload.query).bind(...params);
 
       // Check if query is likely read or write
-      if (query.startsWith("SELECT")) {
+      if (payload.query.startsWith("SELECT")) {
         const result: D1Result<Record<string, unknown>> = await stmt.all();
         logger.info("D1 SELECT result", { success: result.success });
         if (!result.success) {
@@ -271,10 +271,10 @@ router.post(
 
         return response;
       } else if (
-        query.startsWith("INSERT") ||
-        query.startsWith("UPDATE") ||
-        query.startsWith("DELETE") ||
-        query.startsWith("REPLACE")
+        payload.query.startsWith("INSERT") ||
+        payload.query.startsWith("UPDATE") ||
+        payload.query.startsWith("DELETE") ||
+        payload.query.startsWith("REPLACE")
       ) {
         const result: D1Result = await stmt.run();
         logger.info("D1 write result", {
@@ -305,7 +305,7 @@ router.post(
         return response;
       } else {
         logger.warn("Unsupported query type", {
-          prefix: query.substring(0, 10),
+          prefix: payload.query.substring(0, 10),
         });
         return Errors.badRequest(
           "Unsupported query type (must be SELECT, INSERT, UPDATE, DELETE, REPLACE)"
