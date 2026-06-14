@@ -36,14 +36,19 @@ export async function computeDashboardStats(
     const [totalRow, activePosRow, totalClosedRow, profitableRow, dailyRow] =
       await db.batch(stmts);
 
-    const totalTrades = (totalRow as { count: number } | null)?.count ?? 0;
+    // db.batch returns D1Result[] — each .results array contains the rows
+    const totalTrades =
+      (totalRow.results?.[0] as { count: number } | undefined)?.count ?? 0;
     const activePositionsCount =
-      (activePosRow as { count: number } | null)?.count ?? 0;
-    const dailyTradesCount = (dailyRow as { count: number } | null)?.count ?? 0;
+      (activePosRow.results?.[0] as { count: number } | undefined)?.count ?? 0;
+    const dailyTradesCount =
+      (dailyRow.results?.[0] as { count: number } | undefined)?.count ?? 0;
 
     const closedCount =
-      (totalClosedRow as { count: number } | null)?.count ?? 0;
-    const profitCount = (profitableRow as { count: number } | null)?.count ?? 0;
+      (totalClosedRow.results?.[0] as { count: number } | undefined)?.count ??
+      0;
+    const profitCount =
+      (profitableRow.results?.[0] as { count: number } | undefined)?.count ?? 0;
 
     let winRate = 0;
     if (closedCount > 0) {
