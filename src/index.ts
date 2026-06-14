@@ -441,16 +441,30 @@ router.get(
 
       const prefixes = ["global:", "webhook:", "trade:", "agent:"];
 
-      for (const prefix of prefixes) {
-        const list = await env.CONFIG_KV.list({ prefix });
-        for (const key of list.keys) {
-          const data = await env.CONFIG_KV.get(key.name);
-          if (data) {
-            try {
-              settings[key.name] = JSON.parse(data);
-            } catch {
-              settings[key.name] = data;
-            }
+      // List all prefixes in parallel
+      const lists = await Promise.all(
+        prefixes.map((prefix) => env.CONFIG_KV.list({ prefix }))
+      );
+
+      // Collect all key names from all lists
+      const allKeys: string[] = [];
+      for (const list of lists) {
+        allKeys.push(...list.keys.map((k) => k.name));
+      }
+
+      // Get all values in parallel
+      const values = await Promise.all(
+        allKeys.map((key) => env.CONFIG_KV.get(key))
+      );
+
+      // Build settings object
+      for (let i = 0; i < allKeys.length; i++) {
+        const data = values[i];
+        if (data) {
+          try {
+            settings[allKeys[i]] = JSON.parse(data);
+          } catch {
+            settings[allKeys[i]] = data;
           }
         }
       }
