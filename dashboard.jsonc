@@ -12,7 +12,7 @@
         "cache_size_mb": 128,
       },
       "options": {
-        "cache_size_mb": [64, 128, 256, 512]
+        "cache_size_mb": [64, 128, 256, 512],
       },
       "descriptions": {
         "auto_vacuum": "D1 handles vacuuming automatically. This setting is informational for housekeeping tracking.",
@@ -31,7 +31,7 @@
       },
       "options": {
         "logs_retention_days": [7, 14, 30, 60, 90],
-        "trades_retention_days": [30, 60, 90, 180, 365]
+        "trades_retention_days": [30, 60, 90, 180, 365],
       },
       "descriptions": {
         "logs_retention_days": "Number of days to keep system logs before automatic deletion by agent-worker.",

@@ -36,10 +36,46 @@ describe("D1 Worker", () => {
 
   const createMockDB = (preparedStatement = createMockPreparedStatement()) => ({
     prepare: mock(() => preparedStatement),
+    // db.batch must return a 5-element array because workers/d1-worker/src/stats.ts
+    // destructures 5 aggregate results (totalRow, activePosRow, totalClosedRow,
+    // profitableRow, dailyRow) and reads `.results[0].count` from each. Each result
+    // must include a `results: [{ count: 0 }]` row; `count: 0` is a safe default —
+    // every aggregate in stats.ts uses `?? 0` fallback, and the winRate path is
+    // guarded by `closedCount > 0`. The /batch endpoint (which calls db.batch with
+    // a variable-length statement list) only checks `success`/error, not element
+    // count, so the 5-element shape does not regress the existing batch tests.
     batch: mock(() =>
       Promise.resolve([
-        { success: true, error: null, meta: { last_row_id: 123, changes: 1 } },
-        { success: true, error: null, meta: { changes: 1 } },
+        {
+          success: true,
+          error: null,
+          results: [{ count: 0 }],
+          meta: { last_row_id: 123, changes: 1 },
+        },
+        {
+          success: true,
+          error: null,
+          results: [{ count: 0 }],
+          meta: { changes: 1 },
+        },
+        {
+          success: true,
+          error: null,
+          results: [{ count: 0 }],
+          meta: { changes: 1 },
+        },
+        {
+          success: true,
+          error: null,
+          results: [{ count: 0 }],
+          meta: { changes: 1 },
+        },
+        {
+          success: true,
+          error: null,
+          results: [{ count: 0 }],
+          meta: { changes: 1 },
+        },
       ])
     ),
   });
