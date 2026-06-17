@@ -4,7 +4,10 @@ import {
   createJsonResponse,
   toError,
 } from "@jango-blockchained/hoox-shared/errors";
-import { createRouter } from "@jango-blockchained/hoox-shared/router";
+import {
+  createRouter,
+  type MiddlewareHandler,
+} from "@jango-blockchained/hoox-shared/router";
 import type {
   QueryPayload,
   BatchPayload,
@@ -186,12 +189,16 @@ function requireJsonBody(request: Request): Response | null {
 // --- Worker Definition ---
 
 const router = createRouter<Env>();
-const requireAuth = createInternalAuthMiddleware();
+// Cast: createInternalAuthMiddleware returns MiddlewareHandler<InternalAuthEnv>
+// but our router is typed for MiddlewareHandler<Env>. The middleware only
+// reads `INTERNAL_KEY_BINDING` which is present on both types.
+const requireAuth =
+  createInternalAuthMiddleware() as unknown as MiddlewareHandler<Env>;
 
 // Health check endpoint
 router.get(
   "/health",
-  async (request: Request, env: Env, ctx: ExecutionContext) => {
+  async (_request: Request, env: Env, _ctx: ExecutionContext) => {
     try {
       await env.DB.prepare("SELECT 1").first();
     } catch {
@@ -435,7 +442,7 @@ router.post(
 // Dashboard settings endpoint
 router.get(
   "/api/settings",
-  async (request: Request, env: Env, ctx: ExecutionContext) => {
+  async (_request: Request, env: Env, _ctx: ExecutionContext) => {
     try {
       const settings: Record<string, unknown> = {};
 
@@ -482,7 +489,7 @@ router.get(
 // Dashboard settings POST endpoint
 router.post(
   "/api/settings",
-  async (request: Request, env: Env, ctx: ExecutionContext) => {
+  async (request: Request, env: Env, _ctx: ExecutionContext) => {
     try {
       const bodyGuard = requireJsonBody(request);
       if (bodyGuard) return bodyGuard;
@@ -570,7 +577,7 @@ async function handleGetPositions(env: Env, logger: Logger): Promise<Response> {
 // Dashboard balances endpoint
 router.get(
   "/api/balances",
-  async (request: Request, env: Env, ctx: ExecutionContext) =>
+  async (_request: Request, env: Env, _ctx: ExecutionContext) =>
     handleGetBalances(env, logger),
   [requireAuth]
 );
@@ -578,7 +585,7 @@ router.get(
 // Dashboard positions endpoint
 router.get(
   "/api/positions",
-  async (request: Request, env: Env, ctx: ExecutionContext) =>
+  async (_request: Request, env: Env, _ctx: ExecutionContext) =>
     handleGetPositions(env, logger),
   [requireAuth]
 );
@@ -586,14 +593,14 @@ router.get(
 // Dashboard-prefixed aliases for agent-worker compatibility
 router.get(
   "/api/dashboard/balances",
-  async (request: Request, env: Env, ctx: ExecutionContext) =>
+  async (_request: Request, env: Env, _ctx: ExecutionContext) =>
     handleGetBalances(env, logger),
   [requireAuth]
 );
 
 router.get(
   "/api/dashboard/positions",
-  async (request: Request, env: Env, ctx: ExecutionContext) =>
+  async (_request: Request, env: Env, _ctx: ExecutionContext) =>
     handleGetPositions(env, logger),
   [requireAuth]
 );
@@ -601,7 +608,7 @@ router.get(
 // Dashboard logs endpoint
 router.get(
   "/api/logs",
-  async (request: Request, env: Env, ctx: ExecutionContext) => {
+  async (_request: Request, env: Env, _ctx: ExecutionContext) => {
     try {
       const limit = Math.min(
         Math.max(parseInt(env.LOG_LIMIT || "50", 10) || 50, 1),
@@ -629,7 +636,7 @@ router.get(
 // Dashboard stats endpoint
 router.get(
   "/api/dashboard/stats",
-  async (request: Request, env: Env, ctx: ExecutionContext) => {
+  async (_request: Request, env: Env, _ctx: ExecutionContext) => {
     const result = await computeDashboardStats(env.DB);
     if ("error" in result) {
       logger.error("Dashboard stats error", { error: result.error });
