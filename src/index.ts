@@ -273,7 +273,9 @@ router.post(
             latencyMs: selectLatency,
             success: true,
             queryType: "SELECT",
-          })
+          }).catch((err) =>
+            logger.error("trackAnalytics failed", { error: String(err) })
+          )
         );
 
         return response;
@@ -306,7 +308,9 @@ router.post(
             latencyMs,
             success: true,
             queryType: "WRITE",
-          })
+          }).catch((err) =>
+            logger.error("trackAnalytics failed", { error: String(err) })
+          )
         );
 
         return response;
@@ -330,7 +334,9 @@ router.post(
           endpoint: "/query",
           latencyMs,
           success: false,
-        })
+        }).catch((err) =>
+          logger.error("trackAnalytics failed", { error: String(err) })
+        )
       );
 
       return Errors.internal(errorMsg);
@@ -406,7 +412,9 @@ router.post(
           endpoint: "/batch",
           latencyMs,
           success: allSuccess,
-        })
+        }).catch((err) =>
+          logger.error("trackAnalytics failed", { error: String(err) })
+        )
       );
 
       if (!allSuccess) {
@@ -430,7 +438,9 @@ router.post(
           endpoint: "/batch",
           latencyMs,
           success: false,
-        })
+        }).catch((err) =>
+          logger.error("trackAnalytics failed", { error: String(err) })
+        )
       );
 
       return Errors.internal(errorMsg);
