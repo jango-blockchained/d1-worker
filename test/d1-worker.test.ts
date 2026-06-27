@@ -307,9 +307,8 @@ describe("D1 Worker", () => {
         "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
       },
       body: JSON.stringify({
-        key: "test-key",
+        key: "global:test-key",
         value: "test-value",
-        worker: "default",
       }),
     });
     const response = await d1Worker.fetch(
@@ -320,7 +319,13 @@ describe("D1 Worker", () => {
     expect(response.status).toBe(200);
     const data = (await response.json()) as any;
     expect(data.success).toBe(true);
-    expect(data.key).toBe("default:test-key");
+    // Key is stored as-is (already prefixed by the dashboard), no double-prefix
+    expect(data.key).toBe("global:test-key");
+    // Verify the KV put was called with the un-prefixed key
+    expect(mockKV.put).toHaveBeenCalledWith(
+      "global:test-key",
+      JSON.stringify("test-value")
+    );
   });
 
   test("POST /api/settings rejects missing key", async () => {
