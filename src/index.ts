@@ -34,6 +34,29 @@ export interface Env extends Cloudflare.Env {
   LOG_LIMIT?: string; // Optional binding, defaults to "50"
 }
 
+// Known KV key prefixes the dashboard reads/writes. Mirrors the prefix list
+// in workers/dashboard/src/app/api/settings/route.ts — keep them in sync.
+const KNOWN_PREFIXES = [
+  "global:",
+  "webhook:",
+  "trade:",
+  "agent:",
+  "bot:",
+  "email:",
+  "database:",
+  "retention:",
+  "routing:",
+  "behavior:",
+  "cron:",
+  "ai:",
+] as const;
+
+type KnownPrefix = (typeof KNOWN_PREFIXES)[number];
+
+function hasKnownPrefix(key: string): boolean {
+  return KNOWN_PREFIXES.some((prefix) => key.startsWith(prefix));
+}
+
 // --- Security Helpers ---
 
 const TABLE_ALLOWLIST = [
@@ -456,7 +479,7 @@ router.get(
     try {
       const settings: Record<string, unknown> = {};
 
-      const prefixes = ["global:", "webhook:", "trade:", "agent:"];
+      const prefixes: readonly KnownPrefix[] = KNOWN_PREFIXES;
 
       // List all prefixes in parallel
       const lists = await Promise.all(
@@ -516,13 +539,18 @@ router.post(
         return Errors.badRequest("Missing key");
       }
 
-      const worker =
-        typeof payload.worker === "string" ? payload.worker : "default";
-      const configKey = `${worker}:${key}`;
+      // The dashboard already sends fully-prefixed keys (e.g. "global:kill_switch").
+      // Store the key as-is to avoid double-prefixing. Validate it starts with one
+      // of the known prefixes to keep the KV namespace well-formed.
+      if (!hasKnownPrefix(key)) {
+        return Errors.badRequest(
+          `Key must start with one of: ${KNOWN_PREFIXES.join(", ")}`
+        );
+      }
 
-      await env.CONFIG_KV.put(configKey, JSON.stringify(payload.value ?? {}));
+      await env.CONFIG_KV.put(key, JSON.stringify(payload.value ?? {}));
 
-      return createJsonResponse({ success: true, key: configKey });
+      return createJsonResponse({ success: true, key });
     } catch (error) {
       const errorMsg = toError(error);
       logger.error("Settings POST error", { error: errorMsg });
