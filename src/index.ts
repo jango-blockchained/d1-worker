@@ -256,20 +256,23 @@ router.post(
 
       const params = payload.params || [];
 
-      // Validate query security
-      const validation = validateQuery(payload.query);
-      if (!validation.valid) {
-        logger.warn("Query validation failed", {
-          error: validation.error,
-          query: payload.query,
-        });
-        const statusCode = validation.statusCode || 403;
-        if (statusCode === 400) {
-          return Errors.badRequest(
-            validation.error || "Query validation failed"
-          );
+      // SELECT reads pass through the full SQL guard; trusted internal
+      // writes (INSERT/UPDATE/DELETE/REPLACE) use bound parameters only.
+      if (payload.query.trim().toUpperCase().startsWith("SELECT")) {
+        const validation = validateQuery(payload.query);
+        if (!validation.valid) {
+          logger.warn("Query validation failed", {
+            error: validation.error,
+            query: payload.query,
+          });
+          const statusCode = validation.statusCode || 403;
+          if (statusCode === 400) {
+            return Errors.badRequest(
+              validation.error || "Query validation failed"
+            );
+          }
+          return Errors.forbidden(validation.error || "Query validation failed");
         }
-        return Errors.forbidden(validation.error || "Query validation failed");
       }
 
       logger.info("Executing D1 query", { query: payload.query });

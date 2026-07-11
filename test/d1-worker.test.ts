@@ -461,7 +461,7 @@ describe("D1 Worker", () => {
     expect(responseData.results).toBeDefined();
   });
 
-  test("rejects INSERT query (only SELECT allowed)", async () => {
+  test("allows parameterized INSERT from trusted internal callers", async () => {
     const request = new Request("https://d1-worker.workers.dev/query", {
       method: "POST",
       headers: {
@@ -479,11 +479,11 @@ describe("D1 Worker", () => {
       mockEnv as any,
       createMockCtx() as any
     );
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(200);
 
     const responseData = (await response.json()) as any;
-    expect(responseData.success).toBe(false);
-    expect(responseData.error).toContain("Unsupported query type");
+    expect(responseData.success).toBe(true);
+    expect(responseData.changes).toBeDefined();
   });
 
   test("handles batch operations", async () => {
