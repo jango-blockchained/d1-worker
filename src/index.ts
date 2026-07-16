@@ -190,6 +190,66 @@ function validateQuery(query: string): {
 }
 
 /**
+ * Validates INSERT/UPDATE/DELETE/REPLACE writes from trusted internal callers.
+ * Defense-in-depth: table allowlist + no string literals (parameters only).
+ */
+function validateWriteQuery(query: string): {
+  valid: boolean;
+  error?: string;
+  statusCode?: number;
+} {
+  const cleaned = stripSqlComments(query);
+  const normalized = cleaned.trim().toUpperCase();
+  const queryType = normalized.split(/\s+/)[0];
+
+  if (!["INSERT", "UPDATE", "DELETE", "REPLACE"].includes(queryType)) {
+    return {
+      valid: false,
+      error: `Unsupported write type: ${queryType}`,
+      statusCode: 400,
+    };
+  }
+
+  const stringLiteralRegex = /'([^']|'')*'/g;
+  if (stringLiteralRegex.test(cleaned)) {
+    return {
+      valid: false,
+      error:
+        "String literals not allowed in write query. Use parameter placeholders (?) instead.",
+      statusCode: 400,
+    };
+  }
+
+  const doubleQuotedRegex = /"[^"]*"/g;
+  if (doubleQuotedRegex.test(cleaned)) {
+    return {
+      valid: false,
+      error: "Quoted identifiers not allowed in write query.",
+      statusCode: 400,
+    };
+  }
+
+  const tableRegex = /\b(?:INTO|UPDATE|FROM)\s+([a-zA-Z0-9_]+)/gi;
+  let match;
+  const tablesFound = new Set<string>();
+  while ((match = tableRegex.exec(cleaned)) !== null) {
+    tablesFound.add(match[1].toLowerCase());
+  }
+
+  for (const table of tablesFound) {
+    if (!TABLE_ALLOWLIST.includes(table)) {
+      return {
+        valid: false,
+        error: `Unauthorized table access: ${table}`,
+        statusCode: 403,
+      };
+    }
+  }
+
+  return { valid: true };
+}
+
+/**
  * Checks that the request has a JSON Content-Type and a reasonable body size.
  * Returns a Response (error) if validation fails, or null if the body is acceptable.
  */
@@ -311,6 +371,23 @@ router.post(
         payload.query.startsWith("DELETE") ||
         payload.query.startsWith("REPLACE")
       ) {
+        const writeValidation = validateWriteQuery(payload.query);
+        if (!writeValidation.valid) {
+          logger.warn("Write query validation failed", {
+            error: writeValidation.error,
+            query: payload.query,
+          });
+          const statusCode = writeValidation.statusCode || 403;
+          if (statusCode === 400) {
+            return Errors.badRequest(
+              writeValidation.error || "Write query validation failed"
+            );
+          }
+          return Errors.forbidden(
+            writeValidation.error || "Write query validation failed"
+          );
+        }
+
         const result: D1Result = await stmt.run();
         logger.info("D1 write result", {
           success: result.success,

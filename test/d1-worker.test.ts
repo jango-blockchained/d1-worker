@@ -461,6 +461,27 @@ describe("D1 Worker", () => {
     expect(responseData.results).toBeDefined();
   });
 
+  test("rejects INSERT into non-allowlisted table", async () => {
+    const request = new Request("https://d1-worker.workers.dev/query", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
+      },
+      body: JSON.stringify({
+        query: "INSERT INTO evil_table (id) VALUES (?)",
+        params: [1],
+      }),
+    });
+
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(403);
+  });
+
   test("allows parameterized INSERT from trusted internal callers", async () => {
     const request = new Request("https://d1-worker.workers.dev/query", {
       method: "POST",
