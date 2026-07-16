@@ -255,6 +255,14 @@ function validateWriteQuery(query: string): {
   return { valid: true };
 }
 
+function prepareValidatedWrite(env: Env, query: string): D1PreparedStatement {
+  const validation = validateWriteQuery(query);
+  if (!validation.valid) {
+    throw new Error(validation.error || "Write query validation failed");
+  }
+  return env.DB.prepare(query);
+}
+
 const MAX_JSON_BODY_BYTES = 1024 * 1024; // 1 MiB
 
 /**
@@ -328,7 +336,10 @@ async function readJsonBodyWithLimit(
     const text = new TextDecoder().decode(merged);
     return { ok: true, value: JSON.parse(text) };
   } catch {
-    return { ok: false, response: Errors.badRequest("Invalid JSON in request body") };
+    return {
+      ok: false,
+      response: Errors.badRequest("Invalid JSON in request body"),
+    };
   }
 }
 
@@ -799,12 +810,19 @@ router.get(
 
 async function rpcJsonBody(
   request: Request
-): Promise<{ ok: true; value: Record<string, unknown> } | { ok: false; response: Response }> {
+): Promise<
+  | { ok: true; value: Record<string, unknown> }
+  | { ok: false; response: Response }
+> {
   const bodyGuard = requireJsonBody(request);
   if (bodyGuard) return { ok: false, response: bodyGuard };
   const parsed = await readJsonBodyWithLimit(request);
   if (!parsed.ok) return parsed;
-  if (!parsed.value || typeof parsed.value !== "object" || Array.isArray(parsed.value)) {
+  if (
+    !parsed.value ||
+    typeof parsed.value !== "object" ||
+    Array.isArray(parsed.value)
+  ) {
     return {
       ok: false,
       response: Errors.badRequest("Body must be a JSON object"),
@@ -830,12 +848,11 @@ router.post(
     const action = String(b.action ?? "");
     const quantity = Number(b.quantity);
     if (!exchange || !symbol || !action || !Number.isFinite(quantity)) {
-      return Errors.badRequest(
-        "Required: exchange, symbol, action, quantity"
-      );
+      return Errors.badRequest("Required: exchange, symbol, action, quantity");
     }
     try {
-      const result = await env.DB.prepare(
+      const result = await prepareValidatedWrite(
+        env,
         `INSERT INTO trades (id, timestamp, exchange, symbol, action, quantity, price, leverage, status, raw_response)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
@@ -888,12 +905,11 @@ router.post(
         ? b.updated_at
         : Math.floor(Date.now() / 1000);
     if (!id || !exchange || !symbol || !side || !Number.isFinite(size)) {
-      return Errors.badRequest(
-        "Required: id, exchange, symbol, side, size"
-      );
+      return Errors.badRequest("Required: id, exchange, symbol, side, size");
     }
     try {
-      const result = await env.DB.prepare(
+      const result = await prepareValidatedWrite(
+        env,
         `REPLACE INTO positions (id, exchange, symbol, side, size, status, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?)`
       )
@@ -928,12 +944,11 @@ router.post(
     const symbol = String(b.symbol ?? "");
     const signalType = String(b.signal_type ?? "");
     if (!symbol || !signalType || !Number.isFinite(timestamp)) {
-      return Errors.badRequest(
-        "Required: symbol, signal_type, timestamp"
-      );
+      return Errors.badRequest("Required: symbol, signal_type, timestamp");
     }
     try {
-      const result = await env.DB.prepare(
+      const result = await prepareValidatedWrite(
+        env,
         `INSERT INTO trade_signals (signal_id, timestamp, symbol, signal_type, source, raw_data)
          VALUES (?, ?, ?, ?, ?, ?)`
       )
@@ -974,7 +989,8 @@ router.post(
       return Errors.badRequest("Required: message");
     }
     try {
-      const result = await env.DB.prepare(
+      const result = await prepareValidatedWrite(
+        env,
         `INSERT INTO system_logs (level, source, message, details) VALUES (?, ?, ?, ?)`
       )
         .bind(
