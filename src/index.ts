@@ -370,115 +370,71 @@ router.post(
 
       const params = payload.params || [];
 
-      // SELECT reads pass through the full SQL guard; trusted internal
-      // writes (INSERT/UPDATE/DELETE/REPLACE) use bound parameters only.
-      if (payload.query.trim().toUpperCase().startsWith("SELECT")) {
-        const validation = validateQuery(payload.query);
-        if (!validation.valid) {
-          logger.warn("Query validation failed", {
-            error: validation.error,
-            query: payload.query,
-          });
-          const statusCode = validation.statusCode || 403;
-          if (statusCode === 400) {
-            return Errors.badRequest(
-              validation.error || "Query validation failed"
-            );
-          }
-          return Errors.forbidden(validation.error || "Query validation failed");
+      // /query is READ-ONLY. All mutations must use named RPC endpoints
+      // under /rpc/* (insert-trade, upsert-position, insert-signal,
+      // insert-system-log). Free-form writes are permanently rejected.
+      const queryType = payload.query.trim().split(/\s+/)[0]?.toUpperCase();
+      if (queryType !== "SELECT") {
+        logger.warn("Rejected free-form write on /query", {
+          queryType,
+          prefix: payload.query.substring(0, 40),
+        });
+        return createJsonResponse(
+          {
+            success: false,
+            error:
+              "Free-form writes are disabled on /query. Use named RPC: " +
+              "/rpc/insert-trade, /rpc/upsert-position, /rpc/insert-signal, " +
+              "/rpc/insert-system-log",
+            code: "USE_NAMED_RPC",
+          },
+          410
+        );
+      }
+
+      const validation = validateQuery(payload.query);
+      if (!validation.valid) {
+        logger.warn("Query validation failed", {
+          error: validation.error,
+          query: payload.query,
+        });
+        const statusCode = validation.statusCode || 403;
+        if (statusCode === 400) {
+          return Errors.badRequest(
+            validation.error || "Query validation failed"
+          );
         }
+        return Errors.forbidden(validation.error || "Query validation failed");
       }
 
       logger.info("Executing D1 query", { query: payload.query });
       const stmt = env.DB.prepare(payload.query).bind(...params);
 
-      // Check if query is likely read or write
-      if (payload.query.startsWith("SELECT")) {
-        const result: D1Result<Record<string, unknown>> = await stmt.all();
-        logger.info("D1 SELECT result", { success: result.success });
-        if (!result.success) {
-          throw new Error(result.error || "D1 SELECT query failed");
-        }
-        const response = createJsonResponse({
-          success: true,
-          results: result.results,
-        });
-
-        // Track SELECT analytics (non-blocking)
-        const selectLatency = Date.now() - startTime;
-        ctx.waitUntil(
-          trackAnalytics(env, "/track/api-call", {
-            worker: "d1-worker",
-            endpoint: "/query",
-            latencyMs: selectLatency,
-            success: true,
-            queryType: "SELECT",
-          }).catch((err) =>
-            logger.error("trackAnalytics failed", { error: String(err) })
-          )
-        );
-
-        return response;
-      } else if (
-        payload.query.startsWith("INSERT") ||
-        payload.query.startsWith("UPDATE") ||
-        payload.query.startsWith("DELETE") ||
-        payload.query.startsWith("REPLACE")
-      ) {
-        const writeValidation = validateWriteQuery(payload.query);
-        if (!writeValidation.valid) {
-          logger.warn("Write query validation failed", {
-            error: writeValidation.error,
-            query: payload.query,
-          });
-          const statusCode = writeValidation.statusCode || 403;
-          if (statusCode === 400) {
-            return Errors.badRequest(
-              writeValidation.error || "Write query validation failed"
-            );
-          }
-          return Errors.forbidden(
-            writeValidation.error || "Write query validation failed"
-          );
-        }
-
-        const result: D1Result = await stmt.run();
-        logger.info("D1 write result", {
-          success: result.success,
-          changes: result.meta?.changes,
-        });
-        if (!result.success) {
-          throw new Error(result.error || "D1 write query failed");
-        }
-        const response = createJsonResponse({
-          success: true,
-          lastRowId: result.meta?.last_row_id ?? null,
-          changes: result.meta?.changes ?? null,
-        });
-
-        // Track API call analytics (non-blocking)
-        const latencyMs = Date.now() - startTime;
-        ctx.waitUntil(
-          trackAnalytics(env, "/track/api-call", {
-            worker: "d1-worker",
-            endpoint: "/query",
-            latencyMs,
-            success: true,
-            queryType: "WRITE",
-          }).catch((err) =>
-            logger.error("trackAnalytics failed", { error: String(err) })
-          )
-        );
-
-        return response;
-      } else {
-        logger.warn("Unsupported query type", {
-          prefix: payload.query.substring(0, 10),
-        });
-        return Errors.badRequest(
-          "Unsupported query type (must be SELECT, INSERT, UPDATE, DELETE, REPLACE)"
-        );
+      const result: D1Result<Record<string, unknown>> = await stmt.all();
+      logger.info("D1 SELECT result", { success: result.success });
+      if (!result.success) {
+        throw new Error(result.error || "D1 SELECT query failed");
       }
+      const response = createJsonResponse({
+        success: true,
+        results: result.results,
+      });
+
+      // Track SELECT analytics (non-blocking)
+      const selectLatency = Date.now() - startTime;
+      ctx.waitUntil(
+        trackAnalytics(env, "/track/api-call", {
+          worker: "d1-worker",
+          endpoint: "/query",
+          latencyMs: selectLatency,
+          success: true,
+          queryType: "SELECT",
+        }).catch((err) =>
+          logger.error("trackAnalytics failed", { error: String(err) })
+        )
+      );
+
+      return response;
     } catch (error) {
       const errorMsg = toError(error);
       logger.error("Query error", { error: errorMsg });
@@ -520,17 +476,26 @@ router.post(
         return Errors.badRequest("Missing or invalid statements array");
       }
 
-      // Validate all statements before batch execution.
-      // SELECT → full read guard; writes → table allowlist + no literals.
+      // /batch is READ-ONLY (SELECT only). Mutations must use /rpc/* routes.
       for (const stmt of payload.statements) {
         if (typeof stmt.query !== "string" || !stmt.query.trim()) {
           return Errors.badRequest("Each statement must have a 'query' field");
         }
 
         const isSelect = stmt.query.trim().toUpperCase().startsWith("SELECT");
-        const validation = isSelect
-          ? validateQuery(stmt.query)
-          : validateWriteQuery(stmt.query);
+        if (!isSelect) {
+          return createJsonResponse(
+            {
+              success: false,
+              error:
+                "Free-form writes are disabled on /batch. Use named /rpc/* endpoints.",
+              code: "USE_NAMED_RPC",
+            },
+            410
+          );
+        }
+
+        const validation = validateQuery(stmt.query);
         if (!validation.valid) {
           logger.warn("Batch statement validation failed", {
             error: validation.error,

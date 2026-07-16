@@ -359,11 +359,11 @@ describe("D1 Worker", () => {
       mockEnv as any,
       createMockCtx() as any
     );
-    // DROP is now an unsupported query type (only SELECT allowed)
-    expect(response.status).toBe(400);
+    // Non-SELECT free-form SQL is permanently disabled (410 + named RPC)
+    expect(response.status).toBe(410);
     const data = (await response.json()) as any;
     expect(data.success).toBe(false);
-    expect(data.error).toContain("Unsupported query type");
+    expect(data.code).toBe("USE_NAMED_RPC");
   });
 
   test("rejects queries referencing unauthorized tables", async () => {
@@ -403,10 +403,10 @@ describe("D1 Worker", () => {
       mockEnv as any,
       createMockCtx() as any
     );
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(410);
     const data = (await response.json()) as any;
     expect(data.success).toBe(false);
-    expect(data.error).toContain("Unsupported query type");
+    expect(data.code).toBe("USE_NAMED_RPC");
   });
 
   test("handles OPTIONS preflight request", async () => {
@@ -461,7 +461,7 @@ describe("D1 Worker", () => {
     expect(responseData.results).toBeDefined();
   });
 
-  test("rejects INSERT into non-allowlisted table", async () => {
+  test("rejects free-form INSERT on /query (writes moved to named RPC)", async () => {
     const request = new Request("https://d1-worker.workers.dev/query", {
       method: "POST",
       headers: {
@@ -479,10 +479,13 @@ describe("D1 Worker", () => {
       mockEnv as any,
       createMockCtx() as any
     );
-    expect(response.status).toBe(403);
+    // 410 Gone — free-form writes permanently disabled
+    expect(response.status).toBe(410);
+    const body = (await response.json()) as { code?: string };
+    expect(body.code).toBe("USE_NAMED_RPC");
   });
 
-  test("allows parameterized INSERT from trusted internal callers", async () => {
+  test("rejects free-form INSERT even for allowlisted tables on /query", async () => {
     const request = new Request("https://d1-worker.workers.dev/query", {
       method: "POST",
       headers: {
@@ -500,11 +503,49 @@ describe("D1 Worker", () => {
       mockEnv as any,
       createMockCtx() as any
     );
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(410);
+    const body = (await response.json()) as { code?: string };
+    expect(body.code).toBe("USE_NAMED_RPC");
+  });
 
-    const responseData = (await response.json()) as any;
-    expect(responseData.success).toBe(true);
-    expect(responseData.changes).toBeDefined();
+  test("named RPC /rpc/insert-trade accepts write", async () => {
+    mockDB.prepare = jest.fn().mockReturnValue({
+      bind: jest.fn().mockReturnValue({
+        run: jest.fn().mockResolvedValue({
+          success: true,
+          meta: { changes: 1, last_row_id: 1 },
+        }),
+        all: jest.fn().mockResolvedValue({ success: true, results: [] }),
+        first: jest.fn().mockResolvedValue(null),
+      }),
+    });
+
+    const request = new Request(
+      "https://d1-worker.workers.dev/rpc/insert-trade",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
+        },
+        body: JSON.stringify({
+          exchange: "binance",
+          symbol: "BTCUSDT",
+          action: "LONG",
+          quantity: 0.01,
+        }),
+      }
+    );
+
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { success: boolean; id?: string };
+    expect(body.success).toBe(true);
+    expect(body.id).toBeDefined();
   });
 
   test("handles batch operations", async () => {
@@ -577,7 +618,9 @@ describe("D1 Worker", () => {
       mockEnv as any,
       createMockCtx() as any
     );
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(410);
+    const data = (await response.json()) as { code?: string };
+    expect(data.code).toBe("USE_NAMED_RPC");
   });
 
   test("GET /api/dashboard/positions returns open positions", async () => {
