@@ -2,7 +2,7 @@
   "name": "d1-worker",
   "version": "1.0.0",
   "description": "Database service for cryptocurrency trading operations",
-  "license": "CC-BY-4.0",
+  "license": "Apache-2.0",
   "main": "src/index.js",
   "type": "module",
   "scripts": {
