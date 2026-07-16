@@ -509,16 +509,15 @@ describe("D1 Worker", () => {
   });
 
   test("named RPC /rpc/insert-trade accepts write", async () => {
-    mockDB.prepare = jest.fn().mockReturnValue({
-      bind: jest.fn().mockReturnValue({
-        run: jest.fn().mockResolvedValue({
+    mockDB.prepare = mock(() =>
+      createMockPreparedStatement({
+        runResult: {
           success: true,
+          error: null,
           meta: { changes: 1, last_row_id: 1 },
-        }),
-        all: jest.fn().mockResolvedValue({ success: true, results: [] }),
-        first: jest.fn().mockResolvedValue(null),
-      }),
-    });
+        },
+      })
+    );
 
     const request = new Request(
       "https://d1-worker.workers.dev/rpc/insert-trade",
