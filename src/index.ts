@@ -16,6 +16,8 @@ import { trackAnalytics } from "@jango-blockchained/hoox-shared/analytics";
 import {
   createLogger,
   createInternalAuthMiddleware,
+  corsHeaders,
+  resolveCorsOptions,
   internalCorsHeaders,
   withRequestLog,
   wrapWithSecurityHeaders,
@@ -998,15 +1000,21 @@ export default {
       env: Env,
       ctx: ExecutionContext
     ): Promise<Response> => {
-      // Internal worker: no browser CORS surface (service bindings only).
+      const cors = corsHeaders(resolveCorsOptions(request, env));
+      const corsHeadersOrEmpty =
+        Object.keys(cors).length > 0 ? cors : internalCorsHeaders();
       if (request.method === "OPTIONS") {
         return wrapWithSecurityHeaders(
-          new Response(null, { status: 204, headers: internalCorsHeaders() })
+          new Response(null, { status: 204, headers: corsHeadersOrEmpty })
         );
       }
       try {
         const response = await router.handle(request, env, ctx);
-        return wrapWithSecurityHeaders(response);
+        const wrapped = new Response(response.body, response);
+        for (const [key, value] of Object.entries(corsHeadersOrEmpty)) {
+          wrapped.headers.set(key, value);
+        }
+        return wrapWithSecurityHeaders(wrapped);
       } catch (error) {
         logger.error("Unhandled router error", { error: toError(error) });
         return wrapWithSecurityHeaders(Errors.internal(toError(error)));

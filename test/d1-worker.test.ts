@@ -436,6 +436,22 @@ describe("D1 Worker", () => {
     expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
 
+  test("reflects CORS_ALLOW_ORIGIN for matching browser Origin", async () => {
+    const request = new Request("https://d1-worker.workers.dev/health", {
+      method: "GET",
+      headers: { Origin: "https://dashboard.hoox.sh" },
+    });
+    const response = await d1Worker.fetch(
+      request as any,
+      { ...mockEnv, CORS_ALLOW_ORIGIN: "https://dashboard.hoox.sh" } as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
+      "https://dashboard.hoox.sh"
+    );
+  });
+
   test("handles SELECT query", async () => {
     const request = new Request("https://d1-worker.workers.dev/query", {
       method: "POST",
