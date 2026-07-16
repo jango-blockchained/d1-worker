@@ -249,24 +249,81 @@ function validateWriteQuery(query: string): {
   return { valid: true };
 }
 
+const MAX_JSON_BODY_BYTES = 1024 * 1024; // 1 MiB
+
 /**
  * Checks that the request has a JSON Content-Type and a reasonable body size.
  * Returns a Response (error) if validation fails, or null if the body is acceptable.
+ *
+ * Content-Length is an early reject when present; callers that need a hard
+ * cap regardless of headers should read via `readJsonBodyWithLimit`.
  */
 function requireJsonBody(request: Request): Response | null {
   const contentType = request.headers.get("Content-Type") || "";
   if (!contentType.includes("application/json")) {
     return Errors.badRequest("Content-Type must be application/json");
   }
-  // Check body size roughly (Content-Length header)
   const contentLength = request.headers.get("Content-Length");
   if (contentLength) {
     const size = parseInt(contentLength, 10);
-    if (isNaN(size) || size > 1024 * 1024) {
+    if (isNaN(size) || size > MAX_JSON_BODY_BYTES) {
       return Errors.badRequest("Request body too large (max 1MB)");
     }
   }
   return null;
+}
+
+/**
+ * Parse JSON body with a hard byte cap (does not trust Content-Length alone).
+ */
+async function readJsonBodyWithLimit(
+  request: Request,
+  maxBytes: number = MAX_JSON_BODY_BYTES
+): Promise<{ ok: true; value: unknown } | { ok: false; response: Response }> {
+  const reader = request.body?.getReader();
+  if (!reader) {
+    return { ok: false, response: Errors.badRequest("Empty request body") };
+  }
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        try {
+          await reader.cancel();
+        } catch {
+          /* ignore */
+        }
+        return {
+          ok: false,
+          response: Errors.badRequest("Request body too large (max 1MB)"),
+        };
+      }
+      chunks.push(value);
+    }
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      /* ignore */
+    }
+  }
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    merged.set(c, offset);
+    offset += c.byteLength;
+  }
+  try {
+    const text = new TextDecoder().decode(merged);
+    return { ok: true, value: JSON.parse(text) };
+  } catch {
+    return { ok: false, response: Errors.badRequest("Invalid JSON in request body") };
+  }
 }
 
 // --- Worker Definition ---
@@ -301,12 +358,9 @@ router.post(
       const bodyGuard = requireJsonBody(request);
       if (bodyGuard) return bodyGuard;
 
-      let payload: QueryPayload;
-      try {
-        payload = await request.json();
-      } catch {
-        return Errors.badRequest("Invalid JSON in request body");
-      }
+      const parsedBody = await readJsonBodyWithLimit(request);
+      if (!parsedBody.ok) return parsedBody.response;
+      const payload = parsedBody.value as QueryPayload;
 
       if (!payload || typeof payload.query !== "string") {
         return Errors.badRequest(
@@ -458,24 +512,25 @@ router.post(
       const bodyGuard = requireJsonBody(request);
       if (bodyGuard) return bodyGuard;
 
-      let payload: BatchPayload;
-      try {
-        payload = await request.json();
-      } catch {
-        return Errors.badRequest("Invalid JSON in request body");
-      }
+      const parsedBody = await readJsonBodyWithLimit(request);
+      if (!parsedBody.ok) return parsedBody.response;
+      const payload = parsedBody.value as BatchPayload;
 
       if (!payload || !Array.isArray(payload.statements)) {
         return Errors.badRequest("Missing or invalid statements array");
       }
 
-      // Validate all statements before batch execution
+      // Validate all statements before batch execution.
+      // SELECT → full read guard; writes → table allowlist + no literals.
       for (const stmt of payload.statements) {
         if (typeof stmt.query !== "string" || !stmt.query.trim()) {
           return Errors.badRequest("Each statement must have a 'query' field");
         }
 
-        const validation = validateQuery(stmt.query);
+        const isSelect = stmt.query.trim().toUpperCase().startsWith("SELECT");
+        const validation = isSelect
+          ? validateQuery(stmt.query)
+          : validateWriteQuery(stmt.query);
         if (!validation.valid) {
           logger.warn("Batch statement validation failed", {
             error: validation.error,
@@ -607,12 +662,9 @@ router.post(
       const bodyGuard = requireJsonBody(request);
       if (bodyGuard) return bodyGuard;
 
-      let payload: Record<string, unknown>;
-      try {
-        payload = await request.json();
-      } catch {
-        return Errors.badRequest("Invalid JSON in request body");
-      }
+      const parsedBody = await readJsonBodyWithLimit(request);
+      if (!parsedBody.ok) return parsedBody.response;
+      const payload = parsedBody.value as Record<string, unknown>;
 
       const key = payload.key;
       if (!key || typeof key !== "string") {
