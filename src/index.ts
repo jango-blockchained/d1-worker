@@ -817,6 +817,215 @@ router.get(
   [requireAuth]
 );
 
+// ── Named RPC write endpoints ──────────────────────────────────────
+// Prefer these over free-form /query for internal writers. Fixed SQL
+// templates eliminate injection surface and keep the table allowlist
+// implicit in the route.
+
+async function rpcJsonBody(
+  request: Request
+): Promise<{ ok: true; value: Record<string, unknown> } | { ok: false; response: Response }> {
+  const bodyGuard = requireJsonBody(request);
+  if (bodyGuard) return { ok: false, response: bodyGuard };
+  const parsed = await readJsonBodyWithLimit(request);
+  if (!parsed.ok) return parsed;
+  if (!parsed.value || typeof parsed.value !== "object" || Array.isArray(parsed.value)) {
+    return {
+      ok: false,
+      response: Errors.badRequest("Body must be a JSON object"),
+    };
+  }
+  return { ok: true, value: parsed.value as Record<string, unknown> };
+}
+
+/** POST /rpc/insert-trade — insert a executed trade row */
+router.post(
+  "/rpc/insert-trade",
+  async (request: Request, env: Env, _ctx: ExecutionContext) => {
+    const body = await rpcJsonBody(request);
+    if (!body.ok) return body.response;
+    const b = body.value;
+    const id = typeof b.id === "string" ? b.id : crypto.randomUUID();
+    const timestamp =
+      typeof b.timestamp === "number"
+        ? b.timestamp
+        : Math.floor(Date.now() / 1000);
+    const exchange = String(b.exchange ?? "");
+    const symbol = String(b.symbol ?? "");
+    const action = String(b.action ?? "");
+    const quantity = Number(b.quantity);
+    if (!exchange || !symbol || !action || !Number.isFinite(quantity)) {
+      return Errors.badRequest(
+        "Required: exchange, symbol, action, quantity"
+      );
+    }
+    try {
+      const result = await env.DB.prepare(
+        `INSERT INTO trades (id, timestamp, exchange, symbol, action, quantity, price, leverage, status, raw_response)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+        .bind(
+          id,
+          timestamp,
+          exchange,
+          symbol,
+          action,
+          quantity,
+          b.price ?? null,
+          b.leverage ?? null,
+          String(b.status ?? "EXECUTED"),
+          typeof b.raw_response === "string"
+            ? b.raw_response
+            : JSON.stringify(b.raw_response ?? null)
+        )
+        .run();
+      if (!result.success) {
+        throw new Error(result.error || "insert-trade failed");
+      }
+      return createJsonResponse({
+        success: true,
+        id,
+        changes: result.meta?.changes ?? null,
+      });
+    } catch (error) {
+      logger.error("rpc/insert-trade failed", { error: toError(error) });
+      return Errors.internal(toError(error));
+    }
+  },
+  [requireAuth]
+);
+
+/** POST /rpc/upsert-position — REPLACE a positions row */
+router.post(
+  "/rpc/upsert-position",
+  async (request: Request, env: Env, _ctx: ExecutionContext) => {
+    const body = await rpcJsonBody(request);
+    if (!body.ok) return body.response;
+    const b = body.value;
+    const id = String(b.id ?? "");
+    const exchange = String(b.exchange ?? "");
+    const symbol = String(b.symbol ?? "");
+    const side = String(b.side ?? "");
+    const size = Number(b.size);
+    const status = String(b.status ?? "OPEN");
+    const updatedAt =
+      typeof b.updated_at === "number"
+        ? b.updated_at
+        : Math.floor(Date.now() / 1000);
+    if (!id || !exchange || !symbol || !side || !Number.isFinite(size)) {
+      return Errors.badRequest(
+        "Required: id, exchange, symbol, side, size"
+      );
+    }
+    try {
+      const result = await env.DB.prepare(
+        `REPLACE INTO positions (id, exchange, symbol, side, size, status, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+        .bind(id, exchange, symbol, side, size, status, updatedAt)
+        .run();
+      if (!result.success) {
+        throw new Error(result.error || "upsert-position failed");
+      }
+      return createJsonResponse({
+        success: true,
+        id,
+        changes: result.meta?.changes ?? null,
+      });
+    } catch (error) {
+      logger.error("rpc/upsert-position failed", { error: toError(error) });
+      return Errors.internal(toError(error));
+    }
+  },
+  [requireAuth]
+);
+
+/** POST /rpc/insert-signal — insert a trade_signals row */
+router.post(
+  "/rpc/insert-signal",
+  async (request: Request, env: Env, _ctx: ExecutionContext) => {
+    const body = await rpcJsonBody(request);
+    if (!body.ok) return body.response;
+    const b = body.value;
+    const signalId =
+      typeof b.signal_id === "string" ? b.signal_id : crypto.randomUUID();
+    const timestamp = Number(b.timestamp);
+    const symbol = String(b.symbol ?? "");
+    const signalType = String(b.signal_type ?? "");
+    if (!symbol || !signalType || !Number.isFinite(timestamp)) {
+      return Errors.badRequest(
+        "Required: symbol, signal_type, timestamp"
+      );
+    }
+    try {
+      const result = await env.DB.prepare(
+        `INSERT INTO trade_signals (signal_id, timestamp, symbol, signal_type, source, raw_data)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      )
+        .bind(
+          signalId,
+          timestamp,
+          symbol,
+          signalType,
+          b.source ?? null,
+          typeof b.raw_data === "string"
+            ? b.raw_data
+            : JSON.stringify(b.raw_data ?? null)
+        )
+        .run();
+      if (!result.success) {
+        throw new Error(result.error || "insert-signal failed");
+      }
+      return createJsonResponse({ success: true, signal_id: signalId });
+    } catch (error) {
+      logger.error("rpc/insert-signal failed", { error: toError(error) });
+      return Errors.internal(toError(error));
+    }
+  },
+  [requireAuth]
+);
+
+/** POST /rpc/insert-system-log — insert a system_logs row */
+router.post(
+  "/rpc/insert-system-log",
+  async (request: Request, env: Env, _ctx: ExecutionContext) => {
+    const body = await rpcJsonBody(request);
+    if (!body.ok) return body.response;
+    const b = body.value;
+    const level = String(b.level ?? "INFO");
+    const source = String(b.source ?? "unknown");
+    const message = String(b.message ?? "");
+    if (!message) {
+      return Errors.badRequest("Required: message");
+    }
+    try {
+      const result = await env.DB.prepare(
+        `INSERT INTO system_logs (level, source, message, details) VALUES (?, ?, ?, ?)`
+      )
+        .bind(
+          level,
+          source,
+          message,
+          typeof b.details === "string"
+            ? b.details
+            : JSON.stringify(b.details ?? null)
+        )
+        .run();
+      if (!result.success) {
+        throw new Error(result.error || "insert-system-log failed");
+      }
+      return createJsonResponse({
+        success: true,
+        changes: result.meta?.changes ?? null,
+      });
+    } catch (error) {
+      logger.error("rpc/insert-system-log failed", { error: toError(error) });
+      return Errors.internal(toError(error));
+    }
+  },
+  [requireAuth]
+);
+
 export default {
   fetch: withRequestLog(
     async (
