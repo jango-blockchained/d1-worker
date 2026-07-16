@@ -419,11 +419,11 @@ describe("D1 Worker", () => {
       createMockCtx() as any
     );
     expect(response.status).toBe(204);
-    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
-    expect(response.headers.get("Access-Control-Allow-Methods")).toBeDefined();
+    // Internal worker: no open browser CORS
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
 
-  test("includes CORS headers on health responses", async () => {
+  test("does not open CORS on health responses (internal worker)", async () => {
     const request = new Request("https://d1-worker.workers.dev/health", {
       method: "GET",
     });
@@ -433,7 +433,7 @@ describe("D1 Worker", () => {
       createMockCtx() as any
     );
     expect(response.status).toBe(200);
-    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
 
   test("handles SELECT query", async () => {
