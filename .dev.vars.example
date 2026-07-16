@@ -2,5 +2,9 @@
 # Copy to .dev.vars and replace with actual values from `hoox setup` output.
 # .dev.vars is gitignored — never commit secrets.
 
-# Internal auth key used by createInternalAuthMiddleware()
+# Legacy full-access key (fallback when scoped keys are unset)
 INTERNAL_KEY_BINDING=your_internal_key_binding_here
+
+# Scoped keys (recommended): read-only vs write/RPC separation
+# D1_READ_KEY_BINDING=your_d1_read_key_here
+# D1_WRITE_KEY_BINDING=your_d1_write_key_here

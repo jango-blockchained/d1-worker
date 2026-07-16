@@ -436,6 +436,94 @@ describe("D1 Worker", () => {
     expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
 
+  test("scoped read key can access GET balances but not write RPC", async () => {
+    const readEnv = {
+      ...mockEnv,
+      D1_READ_KEY_BINDING: "read-only-key",
+      D1_WRITE_KEY_BINDING: "write-key",
+      INTERNAL_KEY_BINDING: undefined,
+    };
+
+    const readBalances = new Request(
+      "https://d1-worker.workers.dev/api/balances",
+      {
+        method: "GET",
+        headers: { "X-Internal-Auth-Key": "read-only-key" },
+      }
+    );
+    const balancesRes = await d1Worker.fetch(
+      readBalances as any,
+      readEnv as any,
+      createMockCtx() as any
+    );
+    expect(balancesRes.status).toBe(200);
+
+    const writeAttempt = new Request(
+      "https://d1-worker.workers.dev/rpc/insert-trade",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Internal-Auth-Key": "read-only-key",
+        },
+        body: JSON.stringify({
+          exchange: "binance",
+          symbol: "BTCUSDT",
+          action: "LONG",
+          quantity: 0.01,
+        }),
+      }
+    );
+    const rpcRes = await d1Worker.fetch(
+      writeAttempt as any,
+      readEnv as any,
+      createMockCtx() as any
+    );
+    expect(rpcRes.status).toBe(401);
+  });
+
+  test("scoped write key can access write RPC", async () => {
+    mockDB.prepare = mock(() =>
+      createMockPreparedStatement({
+        runResult: {
+          success: true,
+          error: null,
+          meta: { changes: 1, last_row_id: 1 },
+        },
+      })
+    );
+
+    const writeEnv = {
+      ...mockEnv,
+      D1_WRITE_KEY_BINDING: "write-key",
+      INTERNAL_KEY_BINDING: undefined,
+    };
+
+    const request = new Request(
+      "https://d1-worker.workers.dev/rpc/insert-trade",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Internal-Auth-Key": "write-key",
+        },
+        body: JSON.stringify({
+          exchange: "binance",
+          symbol: "BTCUSDT",
+          action: "LONG",
+          quantity: 0.01,
+        }),
+      }
+    );
+
+    const response = await d1Worker.fetch(
+      request as any,
+      writeEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(200);
+  });
+
   test("reflects CORS_ALLOW_ORIGIN for matching browser Origin", async () => {
     const request = new Request("https://d1-worker.workers.dev/health", {
       method: "GET",

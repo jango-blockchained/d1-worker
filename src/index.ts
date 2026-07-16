@@ -24,6 +24,10 @@ import {
   type Logger,
 } from "@jango-blockchained/hoox-shared/middleware";
 import { healthCheck } from "@jango-blockchained/hoox-shared/health";
+import {
+  D1_READ_AUTH_KEY_FIELDS,
+  D1_WRITE_AUTH_KEY_FIELDS,
+} from "@jango-blockchained/hoox-shared/service-bindings";
 import { computeDashboardStats } from "./stats";
 
 const logger = createLogger({ service: "d1-worker", module: "router" });
@@ -334,8 +338,12 @@ const router = createRouter<Env>();
 // Cast: createInternalAuthMiddleware returns MiddlewareHandler<InternalAuthEnv>
 // but our router is typed for MiddlewareHandler<Env>. The middleware only
 // reads `INTERNAL_KEY_BINDING` which is present on both types.
-const requireAuth =
-  createInternalAuthMiddleware() as unknown as MiddlewareHandler<Env>;
+const requireReadAuth = createInternalAuthMiddleware(
+  D1_READ_AUTH_KEY_FIELDS
+) as unknown as MiddlewareHandler<Env>;
+const requireWriteAuth = createInternalAuthMiddleware(
+  D1_WRITE_AUTH_KEY_FIELDS
+) as unknown as MiddlewareHandler<Env>;
 
 // Health check endpoint
 router.get(
@@ -457,7 +465,7 @@ router.post(
       return Errors.internal(errorMsg);
     }
   },
-  [requireAuth]
+  [requireReadAuth]
 );
 
 // Batch endpoint
@@ -571,7 +579,7 @@ router.post(
       return Errors.internal(errorMsg);
     }
   },
-  [requireAuth]
+  [requireReadAuth]
 );
 
 // Dashboard settings endpoint
@@ -618,7 +626,7 @@ router.get(
       return Errors.internal(errorMsg);
     }
   },
-  [requireAuth]
+  [requireReadAuth]
 );
 
 // Dashboard settings POST endpoint
@@ -656,7 +664,7 @@ router.post(
       return Errors.internal(errorMsg);
     }
   },
-  [requireAuth]
+  [requireWriteAuth]
 );
 
 // --- Extracted Handler Functions ---
@@ -716,7 +724,7 @@ router.get(
   "/api/balances",
   async (_request: Request, env: Env, _ctx: ExecutionContext) =>
     handleGetBalances(env, logger),
-  [requireAuth]
+  [requireReadAuth]
 );
 
 // Dashboard positions endpoint
@@ -724,7 +732,7 @@ router.get(
   "/api/positions",
   async (_request: Request, env: Env, _ctx: ExecutionContext) =>
     handleGetPositions(env, logger),
-  [requireAuth]
+  [requireReadAuth]
 );
 
 // Dashboard-prefixed aliases for agent-worker compatibility
@@ -732,14 +740,14 @@ router.get(
   "/api/dashboard/balances",
   async (_request: Request, env: Env, _ctx: ExecutionContext) =>
     handleGetBalances(env, logger),
-  [requireAuth]
+  [requireReadAuth]
 );
 
 router.get(
   "/api/dashboard/positions",
   async (_request: Request, env: Env, _ctx: ExecutionContext) =>
     handleGetPositions(env, logger),
-  [requireAuth]
+  [requireReadAuth]
 );
 
 // Dashboard logs endpoint
@@ -767,7 +775,7 @@ router.get(
       return Errors.internal(errorMsg);
     }
   },
-  [requireAuth]
+  [requireReadAuth]
 );
 
 // Dashboard stats endpoint
@@ -781,7 +789,7 @@ router.get(
     }
     return createJsonResponse({ success: true, stats: result.stats });
   },
-  [requireAuth]
+  [requireReadAuth]
 );
 
 // ── Named RPC write endpoints ──────────────────────────────────────
@@ -859,7 +867,7 @@ router.post(
       return Errors.internal(toError(error));
     }
   },
-  [requireAuth]
+  [requireWriteAuth]
 );
 
 /** POST /rpc/upsert-position — REPLACE a positions row */
@@ -904,7 +912,7 @@ router.post(
       return Errors.internal(toError(error));
     }
   },
-  [requireAuth]
+  [requireWriteAuth]
 );
 
 /** POST /rpc/insert-signal — insert a trade_signals row */
@@ -949,7 +957,7 @@ router.post(
       return Errors.internal(toError(error));
     }
   },
-  [requireAuth]
+  [requireWriteAuth]
 );
 
 /** POST /rpc/insert-system-log — insert a system_logs row */
@@ -990,7 +998,7 @@ router.post(
       return Errors.internal(toError(error));
     }
   },
-  [requireAuth]
+  [requireWriteAuth]
 );
 
 export default {
