@@ -1,3 +1,8 @@
+/**
+ * Copyright (c) 2026 HOOX · HOOX · jango-blockchained
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import type { D1Database } from "@cloudflare/workers-types";
 import { toError } from "@jango-blockchained/hoox-shared/errors";
 
@@ -16,20 +21,26 @@ export async function computeDashboardStats(
     const now = Math.floor(Date.now() / 1000);
     const todayStart = now - (now % 86400);
 
-    // All 5 queries are independent aggregates — batch them for single round-trip
+    // All 5 queries are independent aggregates — batch them for single round-trip.
+    // Exclude testnet fills (status TEST_EXECUTED) and namespaced test positions
+    // (`%-testnet-%` ids) so dashboard headlines reflect live exposure only.
     const stmts = [
-      db.prepare("SELECT COUNT(*) as count FROM trades"),
       db.prepare(
-        "SELECT COUNT(*) as count FROM positions WHERE status = 'OPEN'"
+        "SELECT COUNT(*) as count FROM trades WHERE status IS NULL OR status != 'TEST_EXECUTED'"
       ),
       db.prepare(
-        "SELECT COUNT(*) as count FROM positions WHERE status = 'CLOSED'"
+        "SELECT COUNT(*) as count FROM positions WHERE status = 'OPEN' AND id NOT LIKE '%-testnet-%'"
       ),
       db.prepare(
-        "SELECT COUNT(*) as count FROM positions WHERE status = 'CLOSED' AND unrealized_pnl > 0"
+        "SELECT COUNT(*) as count FROM positions WHERE status = 'CLOSED' AND id NOT LIKE '%-testnet-%'"
+      ),
+      db.prepare(
+        "SELECT COUNT(*) as count FROM positions WHERE status = 'CLOSED' AND id NOT LIKE '%-testnet-%' AND unrealized_pnl > 0"
       ),
       db
-        .prepare("SELECT COUNT(*) as count FROM trades WHERE timestamp >= ?")
+        .prepare(
+          "SELECT COUNT(*) as count FROM trades WHERE timestamp >= ? AND (status IS NULL OR status != 'TEST_EXECUTED')"
+        )
         .bind(todayStart),
     ];
 
