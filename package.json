@@ -1,7 +1,7 @@
 {
   "name": "d1-worker",
   "version": "1.0.0",
-  "description": "Database service for cryptocurrency trading operations",
+  "description": "HOOX data-plane worker: D1 SQL proxy with table allowlist and keyword firewall, settings KV API, balances, positions, and system logs.",
   "license": "Apache-2.0",
   "main": "src/index.js",
   "type": "module",
@@ -22,5 +22,9 @@
     "typescript": "^6.0.3",
     "wrangler": "^4.95.0"
   },
-  "author": "jango-blockchained (hoox-sh)"
+  "author": "jango-blockchained (hoox-sh)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hoox-sh/d1-worker.git"
+  }
 }
