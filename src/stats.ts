@@ -1,10 +1,10 @@
 /**
- * Copyright (c) 2026 HOOX · HOOX · jango-blockchained
+ * Copyright (c) 2026 HOOX · HOOX · jango-blockchained (hoox-sh)
  * SPDX-License-Identifier: Apache-2.0
  */
 
 import type { D1Database } from "@cloudflare/workers-types";
-import { toError } from "@jango-blockchained/hoox-shared/errors";
+import { toError } from "@hoox-sh/hoox-shared/errors";
 
 export interface DashboardStats {
   totalTrades: number;

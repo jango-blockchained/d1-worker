@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2026 HOOX · HOOX · jango-blockchained
+ * Copyright (c) 2026 HOOX · HOOX · jango-blockchained (hoox-sh)
  * SPDX-License-Identifier: Apache-2.0
  */
 
@@ -8,16 +8,16 @@ import {
   Errors,
   createJsonResponse,
   toError,
-} from "@jango-blockchained/hoox-shared/errors";
+} from "@hoox-sh/hoox-shared/errors";
 import {
   createRouter,
   type MiddlewareHandler,
-} from "@jango-blockchained/hoox-shared/router";
+} from "@hoox-sh/hoox-shared/router";
 import type {
   QueryPayload,
   BatchPayload,
-} from "@jango-blockchained/hoox-shared/types";
-import { trackAnalytics } from "@jango-blockchained/hoox-shared/analytics";
+} from "@hoox-sh/hoox-shared/types";
+import { trackAnalytics } from "@hoox-sh/hoox-shared/analytics";
 import {
   createLogger,
   createInternalAuthMiddleware,
@@ -27,12 +27,12 @@ import {
   withRequestLog,
   wrapWithSecurityHeaders,
   type Logger,
-} from "@jango-blockchained/hoox-shared/middleware";
-import { healthCheck } from "@jango-blockchained/hoox-shared/health";
+} from "@hoox-sh/hoox-shared/middleware";
+import { healthCheck } from "@hoox-sh/hoox-shared/health";
 import {
   D1_READ_AUTH_KEY_FIELDS,
   D1_WRITE_AUTH_KEY_FIELDS,
-} from "@jango-blockchained/hoox-shared/service-bindings";
+} from "@hoox-sh/hoox-shared/service-bindings";
 import { computeDashboardStats } from "./stats";
 
 const logger = createLogger({ service: "d1-worker", module: "router" });
