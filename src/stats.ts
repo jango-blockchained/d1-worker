@@ -21,7 +21,7 @@ export async function computeDashboardStats(
     const now = Math.floor(Date.now() / 1000);
     const todayStart = now - (now % 86400);
 
-    // All 5 queries are independent aggregates — batch them for single round-trip.
+    // Independent aggregates — single DB.batch() round-trip.
     // Exclude testnet fills (status TEST_EXECUTED) and namespaced test positions
     // (`%-testnet-%` ids) so dashboard headlines reflect live exposure only.
     const stmts = [
@@ -42,10 +42,20 @@ export async function computeDashboardStats(
           "SELECT COUNT(*) as count FROM trades WHERE timestamp >= ? AND (status IS NULL OR status != 'TEST_EXECUTED')"
         )
         .bind(todayStart),
+      // Live total PnL: sum closed realized/unrealized_pnl + open unrealized_pnl
+      db.prepare(
+        "SELECT COALESCE(SUM(unrealized_pnl), 0) as total FROM positions WHERE id NOT LIKE '%-testnet-%'"
+      ),
     ];
 
-    const [totalRow, activePosRow, totalClosedRow, profitableRow, dailyRow] =
-      await db.batch(stmts);
+    const [
+      totalRow,
+      activePosRow,
+      totalClosedRow,
+      profitableRow,
+      dailyRow,
+      pnlRow,
+    ] = await db.batch(stmts);
 
     // db.batch returns D1Result[] — each .results array contains the rows
     const totalTrades =
@@ -61,6 +71,10 @@ export async function computeDashboardStats(
     const profitCount =
       (profitableRow.results?.[0] as { count: number } | undefined)?.count ?? 0;
 
+    const totalPnlUSDT = Number(
+      (pnlRow.results?.[0] as { total: number } | undefined)?.total ?? 0
+    );
+
     let winRate = 0;
     if (closedCount > 0) {
       winRate = Math.round((profitCount / closedCount) * 100 * 10) / 10;
@@ -70,7 +84,7 @@ export async function computeDashboardStats(
       stats: {
         totalTrades,
         winRate,
-        totalPnlUSDT: 0,
+        totalPnlUSDT: Number.isFinite(totalPnlUSDT) ? totalPnlUSDT : 0,
         activePositionsCount,
         dailyTradesCount,
       },

@@ -78,7 +78,34 @@ const TABLE_ALLOWLIST = [
   "system_logs",
   "trade_requests",
   "trade_responses",
-];
+] as const;
+
+/** Schema / side-effect keywords blocked at the parser level (README firewall). */
+const FORBIDDEN_SQL_KEYWORDS = [
+  "DROP",
+  "PRAGMA",
+  "ALTER",
+  "TRUNCATE",
+  "VACUUM",
+  "ATTACH",
+  "DETACH",
+  "CREATE",
+  "GRANT",
+  "REVOKE",
+  "REINDEX",
+  "ANALYZE",
+] as const;
+
+/** Hard limits to bound CPU / D1 work from a single request. */
+const MAX_SQL_LENGTH = 8_192;
+const MAX_BATCH_STATEMENTS = 50;
+const MAX_PARAMS_PER_STATEMENT = 64;
+
+type ValidationResult = {
+  valid: boolean;
+  error?: string;
+  statusCode?: number;
+};
 
 /**
  * Strips SQL comments from a query string to prevent comment-based bypass
@@ -108,25 +135,111 @@ function stripSqlComments(sql: string): string {
 }
 
 /**
- * Validates a SQL query for security.
+ * Shared structural checks applied to every free-form SQL string before
+ * type-specific validation (SELECT vs write).
+ */
+function assertSqlStructure(cleaned: string): ValidationResult {
+  if (cleaned.length > MAX_SQL_LENGTH) {
+    return {
+      valid: false,
+      error: `SQL statement exceeds max length (${MAX_SQL_LENGTH} chars)`,
+      statusCode: 400,
+    };
+  }
+
+  // Multi-statement abuse: reject any non-trailing semicolon. Allows a
+  // single trailing `;` for clients that always terminate statements.
+  const withoutTrailingSemi = cleaned.replace(/;\s*$/, "");
+  if (withoutTrailingSemi.includes(";")) {
+    return {
+      valid: false,
+      error: "Multi-statement SQL is not allowed",
+      statusCode: 403,
+    };
+  }
+
+  // Keyword firewall (defense-in-depth even when query type is SELECT)
+  for (const kw of FORBIDDEN_SQL_KEYWORDS) {
+    if (new RegExp(`\\b${kw}\\b`, "i").test(cleaned)) {
+      return {
+        valid: false,
+        error: `Forbidden SQL keyword: ${kw}`,
+        statusCode: 403,
+      };
+    }
+  }
+
+  // Reject string literals — all values must use ? placeholders
+  if (/'([^']|'')*'/.test(cleaned)) {
+    return {
+      valid: false,
+      error:
+        "String literals not allowed in query. Use parameter placeholders (?) instead.",
+      statusCode: 400,
+    };
+  }
+
+  // Reject double-quoted identifiers
+  if (/"[^"]*"/.test(cleaned)) {
+    return {
+      valid: false,
+      error: "Quoted identifiers not allowed in query.",
+      statusCode: 400,
+    };
+  }
+
+  return { valid: true };
+}
+
+function extractReferencedTables(cleaned: string): Set<string> {
+  const tableRegex = /\b(?:FROM|JOIN|INTO|UPDATE)\s+([a-zA-Z0-9_]+)/gi;
+  const tablesFound = new Set<string>();
+  let match: RegExpExecArray | null;
+  while ((match = tableRegex.exec(cleaned)) !== null) {
+    tablesFound.add(match[1].toLowerCase());
+  }
+  return tablesFound;
+}
+
+function assertTablesAllowlisted(tables: Set<string>): ValidationResult {
+  for (const table of tables) {
+    if (!(TABLE_ALLOWLIST as readonly string[]).includes(table)) {
+      return {
+        valid: false,
+        error: `Unauthorized table access: ${table}`,
+        statusCode: 403,
+      };
+    }
+  }
+  return { valid: true };
+}
+
+/**
+ * Validates a SQL query for security (SELECT path used by /query and /batch).
  *
  * SECURITY MODEL:
  * - SQL comments are stripped before validation to prevent bypasses
- * - Only SELECT queries are allowed (writes use parameterized prepared statements)
- * - String literals in query are rejected -> all values must use ? placeholders
+ * - Only SELECT queries are allowed (writes use named /rpc/* endpoints)
+ * - Multi-statement SQL rejected (semicolon abuse)
+ * - Destructive keywords blocked at the parser level
+ * - String literals rejected -> all values must use ? placeholders
  * - Table names validated against allowlist -> 403 Forbidden
  * - UNION and subqueries in WHERE/HAVING are restricted -> 403 Forbidden
  */
-function validateQuery(query: string): {
-  valid: boolean;
-  error?: string;
-  statusCode?: number;
-} {
-  // 0. Strip SQL comments to prevent comment-based bypass of validation
-  const cleaned = stripSqlComments(query);
-  const normalized = cleaned.trim().toUpperCase();
+function validateQuery(query: string): ValidationResult {
+  if (typeof query !== "string" || !query.trim()) {
+    return {
+      valid: false,
+      error: "Query must be a non-empty string",
+      statusCode: 400,
+    };
+  }
 
-  // 1. Check query type - only SELECT queries are allowed
+  const cleaned = stripSqlComments(query);
+  const structure = assertSqlStructure(cleaned);
+  if (!structure.valid) return structure;
+
+  const normalized = cleaned.trim().toUpperCase();
   const queryType = normalized.split(/\s+/)[0];
   if (queryType !== "SELECT") {
     return {
@@ -136,50 +249,10 @@ function validateQuery(query: string): {
     };
   }
 
-  // 2. Reject string literals - all values must use ? parameter placeholders -> 400
-  // Prevents injection via string concatenation like: WHERE id = '1' OR '1'='1'
-  const stringLiteralRegex = /'([^']|'')*'/g;
-  if (stringLiteralRegex.test(cleaned)) {
-    return {
-      valid: false,
-      error:
-        "String literals not allowed in query. Use parameter placeholders (?) instead.",
-      statusCode: 400,
-    };
-  }
+  const tables = assertTablesAllowlisted(extractReferencedTables(cleaned));
+  if (!tables.valid) return tables;
 
-  // 3. Reject double-quoted identifiers -> 400
-  const doubleQuotedRegex = /"[^"]*"/g;
-  if (doubleQuotedRegex.test(cleaned)) {
-    return {
-      valid: false,
-      error: "Quoted identifiers not allowed in query.",
-      statusCode: 400,
-    };
-  }
-
-  // 4. Validate table names against allowlist -> 403
-  // Extract table names from FROM, JOIN, INTO, UPDATE clauses
-  const tableRegex = /\b(?:FROM|JOIN|INTO|UPDATE)\s+([a-zA-Z0-9_]+)/gi;
-  let match;
-  const tablesFound = new Set<string>();
-
-  while ((match = tableRegex.exec(cleaned)) !== null) {
-    tablesFound.add(match[1].toLowerCase());
-  }
-
-  // If tables are found, they must be in the allowlist
-  for (const table of tablesFound) {
-    if (!TABLE_ALLOWLIST.includes(table)) {
-      return {
-        valid: false,
-        error: `Unauthorized table access: ${table}`,
-        statusCode: 403,
-      };
-    }
-  }
-
-  // 5. Reject UNION (can be used for data exfiltration) -> 403
+  // UNION can exfiltrate across tables even when both are allowlisted
   if (/\bUNION\b/i.test(cleaned)) {
     return {
       valid: false,
@@ -188,7 +261,7 @@ function validateQuery(query: string): {
     };
   }
 
-  // 6. Reject subqueries in WHERE/HAVING (complexity/DoS risk) -> 403
+  // Nested SELECT complexity / DoS risk
   if (/\b(WHERE|HAVING)\s*\(/i.test(cleaned)) {
     return {
       valid: false,
@@ -202,14 +275,21 @@ function validateQuery(query: string): {
 
 /**
  * Validates INSERT/UPDATE/DELETE/REPLACE writes from trusted internal callers.
- * Defense-in-depth: table allowlist + no string literals (parameters only).
+ * Defense-in-depth: keyword firewall + table allowlist + no string literals.
  */
-function validateWriteQuery(query: string): {
-  valid: boolean;
-  error?: string;
-  statusCode?: number;
-} {
+function validateWriteQuery(query: string): ValidationResult {
+  if (typeof query !== "string" || !query.trim()) {
+    return {
+      valid: false,
+      error: "Write query must be a non-empty string",
+      statusCode: 400,
+    };
+  }
+
   const cleaned = stripSqlComments(query);
+  const structure = assertSqlStructure(cleaned);
+  if (!structure.valid) return structure;
+
   const normalized = cleaned.trim().toUpperCase();
   const queryType = normalized.split(/\s+/)[0];
 
@@ -221,42 +301,26 @@ function validateWriteQuery(query: string): {
     };
   }
 
-  const stringLiteralRegex = /'([^']|'')*'/g;
-  if (stringLiteralRegex.test(cleaned)) {
+  return assertTablesAllowlisted(extractReferencedTables(cleaned));
+}
+
+/** Validate bind-parameter array size before handing off to D1. */
+function validateParams(params: unknown): ValidationResult {
+  if (params == null) return { valid: true };
+  if (!Array.isArray(params)) {
     return {
       valid: false,
-      error:
-        "String literals not allowed in write query. Use parameter placeholders (?) instead.",
+      error: "params must be an array",
       statusCode: 400,
     };
   }
-
-  const doubleQuotedRegex = /"[^"]*"/g;
-  if (doubleQuotedRegex.test(cleaned)) {
+  if (params.length > MAX_PARAMS_PER_STATEMENT) {
     return {
       valid: false,
-      error: "Quoted identifiers not allowed in write query.",
+      error: `Too many params (max ${MAX_PARAMS_PER_STATEMENT})`,
       statusCode: 400,
     };
   }
-
-  const tableRegex = /\b(?:INTO|UPDATE|FROM)\s+([a-zA-Z0-9_]+)/gi;
-  let match;
-  const tablesFound = new Set<string>();
-  while ((match = tableRegex.exec(cleaned)) !== null) {
-    tablesFound.add(match[1].toLowerCase());
-  }
-
-  for (const table of tablesFound) {
-    if (!TABLE_ALLOWLIST.includes(table)) {
-      return {
-        valid: false,
-        error: `Unauthorized table access: ${table}`,
-        statusCode: 403,
-      };
-    }
-  }
-
   return { valid: true };
 }
 
@@ -433,6 +497,11 @@ router.post(
         return Errors.forbidden(validation.error || "Query validation failed");
       }
 
+      const paramsCheck = validateParams(params);
+      if (!paramsCheck.valid) {
+        return Errors.badRequest(paramsCheck.error || "Invalid params");
+      }
+
       logger.info("Executing D1 query", { query: payload.query });
       const stmt = env.DB.prepare(payload.query).bind(...params);
 
@@ -502,6 +571,16 @@ router.post(
         return Errors.badRequest("Missing or invalid statements array");
       }
 
+      if (payload.statements.length === 0) {
+        return Errors.badRequest("statements array must not be empty");
+      }
+
+      if (payload.statements.length > MAX_BATCH_STATEMENTS) {
+        return Errors.badRequest(
+          `Batch exceeds max statements (max ${MAX_BATCH_STATEMENTS})`
+        );
+      }
+
       // /batch is READ-ONLY (SELECT only). Mutations must use /rpc/* routes.
       for (const stmt of payload.statements) {
         if (typeof stmt.query !== "string" || !stmt.query.trim()) {
@@ -536,6 +615,11 @@ router.post(
           return Errors.forbidden(
             validation.error || "Statement validation failed"
           );
+        }
+
+        const paramsCheck = validateParams(stmt.params);
+        if (!paramsCheck.valid) {
+          return Errors.badRequest(paramsCheck.error || "Invalid params");
         }
       }
 

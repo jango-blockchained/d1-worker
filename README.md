@@ -9,9 +9,9 @@
 
 ---
 
-The d1-worker is the centralized data access layer for the entire HOOX ecosystem. Every D1 query — trade history, position snapshots, balance records, system logs — routes through this single isolate. It enforces a strict **table allowlist** (`trade_signals`, `trades`, `positions`, `balances`, `system_logs`, `trade_requests`, `trade_responses`) and rejects any SQL referencing tables outside that set with a `403 Forbidden`. Destructive SQL keywords (`DROP`, `PRAGMA`, `ALTER`, `TRUNCATE`, `VACUUM`, `ATTACH`, `DETACH`) are blocked at the parser level.
+The d1-worker is the centralized data access layer for the entire HOOX ecosystem. Every D1 query — trade history, position snapshots, balance records, system logs — routes through this single isolate. It enforces a strict **table allowlist** (`trade_signals`, `trades`, `positions`, `balances`, `system_logs`, `trade_requests`, `trade_responses`) and rejects any SQL referencing tables outside that set with a `403 Forbidden`. Destructive SQL keywords (`DROP`, `PRAGMA`, `ALTER`, `TRUNCATE`, `VACUUM`, `ATTACH`, `DETACH`, `CREATE`, …) are blocked at the parser level. Multi-statement SQL (semicolons) and string literals are rejected so all values must use `?` bind parameters.
 
-Query execution supports single-statement (`POST /query`) and atomic multi-statement batches (`POST /batch`, backed by `DB.batch()`). All mutations return `lastRowId` + `changes` metadata. The worker also exposes a KV-backed settings API (`CONFIG_KV`) for reading and writing configuration values under key prefixes (`global:`, `webhook:`, `trade:`, `agent:`).
+`POST /query` and `POST /batch` are **read-only** (SELECT). Free-form writes return `410` with `USE_NAMED_RPC`; mutations use fixed templates under `/rpc/*` (`insert-trade`, `upsert-position`, `insert-signal`, `insert-system-log`). Batches are capped (`MAX_BATCH_STATEMENTS=50`, max 64 params per statement, max SQL length 8 KiB). The worker also exposes a KV-backed settings API (`CONFIG_KV`) for configuration under known prefixes (`global:`, `webhook:`, `trade:`, `agent:`, …).
 
 ### Role in the Mesh
 
@@ -38,15 +38,20 @@ Every read/write goes through table allowlist + SQL firewall.
 
 ### Entry Points
 
-| Method     | Path             | Auth         | Schema                                                |
-| ---------- | ---------------- | ------------ | ----------------------------------------------------- |
-| `POST`     | `/query`         | Internal key | `{ sql, params[] }` → `{ results[], success }`        |
-| `POST`     | `/batch`         | Internal key | `[sql, params[]][]` → atomic batch                    |
-| `GET/POST` | `/api/settings`  | Internal key | KV config (`global:`, `webhook:`, `trade:`, `agent:`) |
-| `GET`      | `/api/balances`  | Internal key | Latest per-exchange balance snapshots                 |
-| `GET`      | `/api/positions` | Internal key | Open positions, `updated_at DESC`                     |
-| `GET`      | `/api/logs`      | Internal key | Last 50 `system_logs` entries                         |
-| `GET`      | `/health`        | None         | `SELECT 1` connectivity check                         |
+| Method     | Path                   | Auth         | Schema                                                          |
+| ---------- | ---------------------- | ------------ | --------------------------------------------------------------- |
+| `POST`     | `/query`               | Read key     | `{ query, params[] }` SELECT-only → `{ results[], success }`    |
+| `POST`     | `/batch`               | Read key     | `{ statements: [{query,params}] }` SELECT-only atomic batch     |
+| `POST`     | `/rpc/insert-trade`    | Write key    | Named trade insert (fixed SQL template)                         |
+| `POST`     | `/rpc/upsert-position` | Write key    | Named position REPLACE                                          |
+| `POST`     | `/rpc/insert-signal`   | Write key    | Named trade_signals insert                                      |
+| `POST`     | `/rpc/insert-system-log` | Write key  | Named system_logs insert                                        |
+| `GET/POST` | `/api/settings`        | Read/Write   | KV config (known prefixes only)                                 |
+| `GET`      | `/api/balances`        | Read key     | Latest per-exchange balance snapshots                           |
+| `GET`      | `/api/positions`       | Read key     | Open positions, `updated_at DESC`                               |
+| `GET`      | `/api/logs`            | Read key     | Last N `system_logs` entries (capped)                           |
+| `GET`      | `/api/dashboard/stats` | Read key     | Live-only aggregates (excludes testnet fills/positions)         |
+| `GET`      | `/health`              | None         | `SELECT 1` connectivity check                                   |
 
 ### Database Schema (D1: `trade-data-db`)
 
@@ -62,9 +67,13 @@ Every read/write goes through table allowlist + SQL firewall.
 ### Security Model
 
 - **Table allowlist**: queries referencing non-allowlisted tables → `403`
-- **Keyword firewall**: `DROP`, `ALTER`, `TRUNCATE`, `PRAGMA`, `VACUUM`, `ATTACH`, `DETACH` → `403`
-- **Read-only enforcement**: `SELECT` allowed; `INSERT`/`UPDATE`/`DELETE`/`REPLACE` allowed; schema mutations blocked
-- **Internal auth**: All endpoints except `/health` require `X-Internal-Auth-Key` header
+- **Keyword firewall**: `DROP`, `ALTER`, `TRUNCATE`, `PRAGMA`, `VACUUM`, `ATTACH`, `DETACH`, `CREATE`, … → `403`
+- **Multi-statement rejection**: any non-trailing `;` → `403`
+- **Params only**: string literals / quoted identifiers → `400`
+- **Batch/size limits**: max 50 statements, 64 params, 8 KiB SQL, 1 MiB JSON body
+- **Read-only free-form path**: `/query` + `/batch` SELECT only; free-form writes → `410 USE_NAMED_RPC`
+- **Named RPC writes**: fixed SQL templates under `/rpc/*` (defense-in-depth validation still applied)
+- **Fail-closed auth**: scoped read/write keys (`D1_READ_KEY_BINDING` / `D1_WRITE_KEY_BINDING`) with legacy `INTERNAL_KEY_BINDING` fallback; missing key → `401`
 
 ### Development
 

@@ -41,14 +41,12 @@ describe("D1 Worker", () => {
 
   const createMockDB = (preparedStatement = createMockPreparedStatement()) => ({
     prepare: mock(() => preparedStatement),
-    // db.batch must return a 5-element array because workers/d1-worker/src/stats.ts
-    // destructures 5 aggregate results (totalRow, activePosRow, totalClosedRow,
-    // profitableRow, dailyRow) and reads `.results[0].count` from each. Each result
-    // must include a `results: [{ count: 0 }]` row; `count: 0` is a safe default —
-    // every aggregate in stats.ts uses `?? 0` fallback, and the winRate path is
-    // guarded by `closedCount > 0`. The /batch endpoint (which calls db.batch with
-    // a variable-length statement list) only checks `success`/error, not element
-    // count, so the 5-element shape does not regress the existing batch tests.
+    // db.batch must return a 6-element array because workers/d1-worker/src/stats.ts
+    // destructures 6 aggregate results (totalRow, activePosRow, totalClosedRow,
+    // profitableRow, dailyRow, pnlRow). Each count result includes
+    // `results: [{ count: 0 }]`; pnlRow uses `results: [{ total: 0 }]`.
+    // The /batch endpoint only checks success/error, so the 6-element shape
+    // does not regress existing batch tests.
     batch: mock(() =>
       Promise.resolve([
         {
@@ -79,6 +77,12 @@ describe("D1 Worker", () => {
           success: true,
           error: null,
           results: [{ count: 0 }],
+          meta: { changes: 1 },
+        },
+        {
+          success: true,
+          error: null,
+          results: [{ total: 0 }],
           meta: { changes: 1 },
         },
       ])
@@ -848,5 +852,120 @@ describe("D1 Worker", () => {
 
     const responseData = (await response.json()) as any;
     expect(responseData.success).toBe(false);
+  });
+
+  test("rejects multi-statement SELECT (semicolon abuse)", async () => {
+    const request = new Request("https://d1-worker.workers.dev/query", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
+      },
+      body: JSON.stringify({
+        query: "SELECT * FROM trades; DROP TABLE trades",
+        params: [],
+      }),
+    });
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(403);
+    const data = (await response.json()) as any;
+    expect(data.success).toBe(false);
+    expect(String(data.error)).toMatch(/multi-statement|forbidden sql keyword/i);
+  });
+
+  test("rejects SELECT containing forbidden keyword (ATTACH)", async () => {
+    const request = new Request("https://d1-worker.workers.dev/query", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
+      },
+      body: JSON.stringify({
+        // Keyword firewall must block even when the first token is SELECT
+        query: "SELECT * FROM trades WHERE ATTACH IS NOT NULL",
+        params: [],
+      }),
+    });
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(403);
+    const data = (await response.json()) as any;
+    expect(data.success).toBe(false);
+    expect(String(data.error)).toMatch(/forbidden sql keyword/i);
+  });
+
+  test("rejects string literals in SELECT (must use params)", async () => {
+    const request = new Request("https://d1-worker.workers.dev/query", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
+      },
+      body: JSON.stringify({
+        query: "SELECT * FROM trades WHERE symbol = 'BTCUSDT'",
+        params: [],
+      }),
+    });
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(400);
+    const data = (await response.json()) as any;
+    expect(String(data.error)).toMatch(/string literal/i);
+  });
+
+  test("batch rejects oversized statement lists", async () => {
+    const statements = Array.from({ length: 51 }, () => ({
+      query: "SELECT * FROM trades LIMIT ?",
+      params: [1],
+    }));
+    const request = new Request("https://d1-worker.workers.dev/batch", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
+      },
+      body: JSON.stringify({ statements }),
+    });
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(400);
+    const data = (await response.json()) as any;
+    expect(String(data.error)).toMatch(/max statements/i);
+  });
+
+  test("rejects too many bind params", async () => {
+    const params = Array.from({ length: 65 }, (_, i) => i);
+    const request = new Request("https://d1-worker.workers.dev/query", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
+      },
+      body: JSON.stringify({
+        query: "SELECT * FROM trades WHERE id = ?",
+        params,
+      }),
+    });
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(400);
+    const data = (await response.json()) as any;
+    expect(String(data.error)).toMatch(/too many params/i);
   });
 });
