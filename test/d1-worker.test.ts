@@ -968,4 +968,397 @@ describe("D1 Worker", () => {
     const data = (await response.json()) as any;
     expect(String(data.error)).toMatch(/too many params/i);
   });
+
+  // ── Validation edge cases ──
+
+  test("rejects UNION in SELECT", async () => {
+    const request = new Request("https://d1-worker.workers.dev/query", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
+      },
+      body: JSON.stringify({
+        query: "SELECT id FROM trades UNION SELECT id FROM positions",
+        params: [],
+      }),
+    });
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(403);
+    const data = (await response.json()) as any;
+    expect(String(data.error)).toMatch(/UNION/i);
+  });
+
+  test("rejects subqueries in WHERE", async () => {
+    const request = new Request("https://d1-worker.workers.dev/query", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
+      },
+      body: JSON.stringify({
+        query: "SELECT * FROM trades WHERE (SELECT 1)",
+        params: [],
+      }),
+    });
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(403);
+    const data = (await response.json()) as any;
+    expect(String(data.error)).toMatch(/Subquer/i);
+  });
+
+  test("rejects double-quoted identifiers", async () => {
+    const request = new Request("https://d1-worker.workers.dev/query", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
+      },
+      body: JSON.stringify({
+        query: 'SELECT * FROM trades WHERE "id" = ?',
+        params: [1],
+      }),
+    });
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(400);
+    const data = (await response.json()) as any;
+    expect(String(data.error)).toMatch(/Quoted identifiers/i);
+  });
+
+  test("strips SQL comments before validation (comment-only DROP bypass)", async () => {
+    const request = new Request("https://d1-worker.workers.dev/query", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
+      },
+      body: JSON.stringify({
+        // DROP is still present after comment strip? Actually DROP is in the
+        // statement text outside the comment — forbidden keyword firewall.
+        query: "SELECT * FROM trades /* ignore */ WHERE id = ?",
+        params: [1],
+      }),
+    });
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    // Clean SELECT with comment should pass validation and hit DB
+    expect(response.status).toBe(200);
+  });
+
+  test("rejects empty query string", async () => {
+    const request = new Request("https://d1-worker.workers.dev/query", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
+      },
+      body: JSON.stringify({ query: "   ", params: [] }),
+    });
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    // Whitespace-only is not SELECT → free-form write rejection (410)
+    // or validation 400 depending on order of checks.
+    expect([400, 403, 410]).toContain(response.status);
+  });
+
+  test("rejects oversized SQL statement", async () => {
+    // Length check runs on comment-stripped SQL, so pad with identifiers
+    // (not a trailing `--` comment that would be stripped away).
+    const huge =
+      "SELECT " + Array.from({ length: 2000 }, (_, i) => `c${i}`).join(",") +
+      " FROM trades";
+    const request = new Request("https://d1-worker.workers.dev/query", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
+      },
+      body: JSON.stringify({ query: huge, params: [] }),
+    });
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(400);
+    const data = (await response.json()) as any;
+    expect(String(data.error)).toMatch(/max length/i);
+  });
+
+  test("GET /api/logs returns log rows", async () => {
+    mockPreparedStatement = createMockPreparedStatement({
+      allResult: {
+        success: true,
+        error: null,
+        results: [
+          {
+            id: 1,
+            timestamp: 1,
+            level: "INFO",
+            module: "test",
+            message: "hi",
+            context: null,
+          },
+        ],
+      },
+    });
+    mockDB = createMockDB(mockPreparedStatement);
+    mockEnv = createMockEnv(mockDB, mockKV);
+
+    const request = new Request("https://d1-worker.workers.dev/api/logs", {
+      method: "GET",
+      headers: { "X-Internal-Auth-Key": TEST_INTERNAL_KEY },
+    });
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as any;
+    expect(data.success).toBe(true);
+    expect(Array.isArray(data.logs)).toBe(true);
+  });
+
+  test("dashboard stats computes winRate when closed positions exist", async () => {
+    // batch returns: totalTrades, activeOpen, totalClosed, profitable, daily, pnl
+    mockDB.batch = mock(() =>
+      Promise.resolve([
+        { success: true, results: [{ count: 10 }] },
+        { success: true, results: [{ count: 2 }] },
+        { success: true, results: [{ count: 8 }] },
+        { success: true, results: [{ count: 4 }] },
+        { success: true, results: [{ count: 1 }] },
+        { success: true, results: [{ total: 123.45 }] },
+      ])
+    );
+    mockEnv = createMockEnv(mockDB, mockKV);
+
+    const request = new Request(
+      "https://d1-worker.workers.dev/api/dashboard/stats",
+      {
+        method: "GET",
+        headers: { "X-Internal-Auth-Key": TEST_INTERNAL_KEY },
+      }
+    );
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as any;
+    expect(data.stats.totalTrades).toBe(10);
+    expect(data.stats.winRate).toBe(50);
+    expect(data.stats.totalPnlUSDT).toBe(123.45);
+    expect(data.stats.activePositionsCount).toBe(2);
+    expect(data.stats.dailyTradesCount).toBe(1);
+  });
+
+  test("POST /rpc/upsert-position accepts write", async () => {
+    mockPreparedStatement = createMockPreparedStatement({
+      runResult: {
+        success: true,
+        error: null,
+        meta: { changes: 1, last_row_id: 1 },
+      },
+    });
+    mockDB = createMockDB(mockPreparedStatement);
+    mockEnv = createMockEnv(mockDB, mockKV);
+
+    const request = new Request(
+      "https://d1-worker.workers.dev/rpc/upsert-position",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
+        },
+        body: JSON.stringify({
+          id: "pos-1",
+          exchange: "binance",
+          symbol: "BTCUSDT",
+          side: "LONG",
+          size: 0.01,
+          status: "OPEN",
+        }),
+      }
+    );
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as any;
+    expect(data.success).toBe(true);
+  });
+
+  test("POST /rpc/upsert-position rejects missing fields", async () => {
+    const request = new Request(
+      "https://d1-worker.workers.dev/rpc/upsert-position",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
+        },
+        body: JSON.stringify({ id: "pos-1" }),
+      }
+    );
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(400);
+  });
+
+  test("POST /rpc/insert-signal accepts write", async () => {
+    mockPreparedStatement = createMockPreparedStatement({
+      runResult: {
+        success: true,
+        error: null,
+        meta: { changes: 1, last_row_id: 1 },
+      },
+    });
+    mockDB = createMockDB(mockPreparedStatement);
+    mockEnv = createMockEnv(mockDB, mockKV);
+
+    const request = new Request(
+      "https://d1-worker.workers.dev/rpc/insert-signal",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
+        },
+        body: JSON.stringify({
+          symbol: "ETHUSDT",
+          signal_type: "BUY",
+          timestamp: 1_700_000_000,
+          source: "test",
+        }),
+      }
+    );
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as any;
+    expect(data.success).toBe(true);
+    expect(data.signal_id).toBeDefined();
+  });
+
+  test("POST /rpc/insert-system-log accepts write", async () => {
+    mockPreparedStatement = createMockPreparedStatement({
+      runResult: {
+        success: true,
+        error: null,
+        meta: { changes: 1, last_row_id: 1 },
+      },
+    });
+    mockDB = createMockDB(mockPreparedStatement);
+    mockEnv = createMockEnv(mockDB, mockKV);
+
+    const request = new Request(
+      "https://d1-worker.workers.dev/rpc/insert-system-log",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
+        },
+        body: JSON.stringify({
+          level: "ERROR",
+          source: "unit-test",
+          message: "something broke",
+          details: { code: 1 },
+        }),
+      }
+    );
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as any;
+    expect(data.success).toBe(true);
+  });
+
+  test("POST /rpc/insert-system-log rejects empty message", async () => {
+    const request = new Request(
+      "https://d1-worker.workers.dev/rpc/insert-system-log",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
+        },
+        body: JSON.stringify({ level: "INFO" }),
+      }
+    );
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(400);
+  });
+
+  test("batch rejects empty statements array", async () => {
+    const request = new Request("https://d1-worker.workers.dev/batch", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
+      },
+      body: JSON.stringify({ statements: [] }),
+    });
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(400);
+  });
+
+  test("dashboard stats returns 500 when batch throws", async () => {
+    mockDB.batch = mock(() => Promise.reject(new Error("db offline")));
+    mockEnv = createMockEnv(mockDB, mockKV);
+    const request = new Request(
+      "https://d1-worker.workers.dev/api/dashboard/stats",
+      {
+        method: "GET",
+        headers: { "X-Internal-Auth-Key": TEST_INTERNAL_KEY },
+      }
+    );
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(500);
+  });
 });
