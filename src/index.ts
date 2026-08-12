@@ -196,7 +196,8 @@ function extractReferencedTables(cleaned: string): Set<string> {
   const tablesFound = new Set<string>();
   let match: RegExpExecArray | null;
   while ((match = tableRegex.exec(cleaned)) !== null) {
-    tablesFound.add(match[1].toLowerCase());
+    const table = match[1];
+    if (table) tablesFound.add(table.toLowerCase());
   }
   return tablesFound;
 }
@@ -240,7 +241,7 @@ function validateQuery(query: string): ValidationResult {
   if (!structure.valid) return structure;
 
   const normalized = cleaned.trim().toUpperCase();
-  const queryType = normalized.split(/\s+/)[0];
+  const queryType = normalized.split(/\s+/)[0] ?? "";
   if (queryType !== "SELECT") {
     return {
       valid: false,
@@ -291,7 +292,7 @@ function validateWriteQuery(query: string): ValidationResult {
   if (!structure.valid) return structure;
 
   const normalized = cleaned.trim().toUpperCase();
-  const queryType = normalized.split(/\s+/)[0];
+  const queryType = normalized.split(/\s+/)[0] ?? "";
 
   if (!["INSERT", "UPDATE", "DELETE", "REPLACE"].includes(queryType)) {
     return {
@@ -709,12 +710,13 @@ router.get(
 
       // Build settings object
       for (let i = 0; i < allKeys.length; i++) {
+        const key = allKeys[i];
         const data = values[i];
-        if (data) {
+        if (key && data) {
           try {
-            settings[allKeys[i]] = JSON.parse(data);
+            settings[key] = JSON.parse(data);
           } catch {
-            settings[allKeys[i]] = data;
+            settings[key] = data;
           }
         }
       }
