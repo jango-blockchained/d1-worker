@@ -26,6 +26,7 @@ import {
   internalCorsHeaders,
   withRequestLog,
   wrapWithSecurityHeaders,
+  safeWaitUntil,
   type Logger,
 } from "@hoox-sh/hoox-shared/middleware";
 import { healthCheck } from "@hoox-sh/hoox-shared/health";
@@ -519,16 +520,16 @@ router.post(
 
       // Track SELECT analytics (non-blocking)
       const selectLatency = Date.now() - startTime;
-      ctx.waitUntil(
+      safeWaitUntil(
+        ctx,
         trackAnalytics(env, "/track/api-call", {
           worker: "d1-worker",
           endpoint: "/query",
           latencyMs: selectLatency,
           success: true,
           queryType: "SELECT",
-        }).catch((err) =>
-          logger.error("trackAnalytics failed", { error: String(err) })
-        )
+        }),
+        (err) => logger.error("trackAnalytics failed", { error: String(err) })
       );
 
       return response;
@@ -538,15 +539,15 @@ router.post(
 
       // Track failed API call (non-blocking)
       const latencyMs = Date.now() - startTime;
-      ctx.waitUntil(
+      safeWaitUntil(
+        ctx,
         trackAnalytics(env, "/track/api-call", {
           worker: "d1-worker",
           endpoint: "/query",
           latencyMs,
           success: false,
-        }).catch((err) =>
-          logger.error("trackAnalytics failed", { error: String(err) })
-        )
+        }),
+        (err) => logger.error("trackAnalytics failed", { error: String(err) })
       );
 
       return Errors.internal(errorMsg);
@@ -641,15 +642,15 @@ router.post(
 
       // Track API call analytics (non-blocking)
       const latencyMs = Date.now() - startTime;
-      ctx.waitUntil(
+      safeWaitUntil(
+        ctx,
         trackAnalytics(env, "/track/api-call", {
           worker: "d1-worker",
           endpoint: "/batch",
           latencyMs,
           success: allSuccess,
-        }).catch((err) =>
-          logger.error("trackAnalytics failed", { error: String(err) })
-        )
+        }),
+        (err) => logger.error("trackAnalytics failed", { error: String(err) })
       );
 
       if (!allSuccess) {
@@ -667,15 +668,15 @@ router.post(
 
       // Track failed API call (non-blocking)
       const latencyMs = Date.now() - startTime;
-      ctx.waitUntil(
+      safeWaitUntil(
+        ctx,
         trackAnalytics(env, "/track/api-call", {
           worker: "d1-worker",
           endpoint: "/batch",
           latencyMs,
           success: false,
-        }).catch((err) =>
-          logger.error("trackAnalytics failed", { error: String(err) })
-        )
+        }),
+        (err) => logger.error("trackAnalytics failed", { error: String(err) })
       );
 
       return Errors.internal(errorMsg);
