@@ -1327,6 +1327,149 @@ describe("D1 Worker", () => {
     expect(response.status).toBe(400);
   });
 
+  test("POST /rpc/list-signals returns rows with bound limit", async () => {
+    const rows = [
+      {
+        signal_id: "s1",
+        timestamp: 1,
+        symbol: "BTCUSDT",
+        signal_type: "BUY",
+        source: "tv",
+        processed_at: 2,
+      },
+    ];
+    mockPreparedStatement = createMockPreparedStatement({
+      allResult: { success: true, error: null, results: rows },
+    });
+    mockDB = createMockDB(mockPreparedStatement);
+    mockEnv = createMockEnv(mockDB, mockKV);
+
+    const request = new Request(
+      "https://d1-worker.workers.dev/rpc/list-signals",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
+        },
+        body: JSON.stringify({ limit: 5, offset: 0 }),
+      }
+    );
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as any;
+    expect(data.success).toBe(true);
+    expect(data.results).toEqual(rows);
+    expect(data.limit).toBe(5);
+    expect(data.offset).toBe(0);
+    expect(mockPreparedStatement.bind).toHaveBeenCalledWith(5, 0);
+  });
+
+  test("GET /rpc/list-signals caps limit at 100", async () => {
+    mockPreparedStatement = createMockPreparedStatement({
+      allResult: { success: true, error: null, results: [] },
+    });
+    mockDB = createMockDB(mockPreparedStatement);
+    mockEnv = createMockEnv(mockDB, mockKV);
+
+    const request = new Request(
+      "https://d1-worker.workers.dev/rpc/list-signals?limit=500&offset=2",
+      {
+        method: "GET",
+        headers: { "X-Internal-Auth-Key": TEST_INTERNAL_KEY },
+      }
+    );
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as any;
+    expect(data.success).toBe(true);
+    expect(data.limit).toBe(100);
+    expect(data.offset).toBe(2);
+    expect(mockPreparedStatement.bind).toHaveBeenCalledWith(100, 2);
+  });
+
+  test("POST /rpc/list-signals rejects invalid limit", async () => {
+    const request = new Request(
+      "https://d1-worker.workers.dev/rpc/list-signals",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
+        },
+        body: JSON.stringify({ limit: 0 }),
+      }
+    );
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(400);
+  });
+
+  test("POST /rpc/list-system-logs returns rows with bound limit", async () => {
+    const rows = [
+      {
+        id: "l1",
+        timestamp: 10,
+        level: "INFO",
+        service: "trade-worker",
+        message: "ok",
+        details: null,
+      },
+    ];
+    mockPreparedStatement = createMockPreparedStatement({
+      allResult: { success: true, error: null, results: rows },
+    });
+    mockDB = createMockDB(mockPreparedStatement);
+    mockEnv = createMockEnv(mockDB, mockKV);
+
+    const request = new Request(
+      "https://d1-worker.workers.dev/rpc/list-system-logs",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
+        },
+        body: JSON.stringify({ limit: 20 }),
+      }
+    );
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as any;
+    expect(data.success).toBe(true);
+    expect(data.results).toEqual(rows);
+    expect(data.limit).toBe(20);
+    expect(mockPreparedStatement.bind).toHaveBeenCalledWith(20, 0);
+  });
+
+  test("GET /rpc/list-system-logs requires auth", async () => {
+    const request = new Request(
+      "https://d1-worker.workers.dev/rpc/list-system-logs",
+      { method: "GET" }
+    );
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(401);
+  });
+
   test("batch rejects empty statements array", async () => {
     const request = new Request("https://d1-worker.workers.dev/batch", {
       method: "POST",

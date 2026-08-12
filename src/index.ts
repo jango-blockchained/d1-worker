@@ -461,9 +461,9 @@ router.post(
 
       const params = payload.params || [];
 
-      // /query is READ-ONLY. All mutations must use named RPC endpoints
-      // under /rpc/* (insert-trade, upsert-position, insert-signal,
-      // insert-system-log). Free-form writes are permanently rejected.
+      // /query is READ-ONLY free-form SELECT. Prefer named /rpc/* for
+      // known hot paths (list-signals, list-system-logs, inserts).
+      // Free-form writes are permanently rejected (410 USE_NAMED_RPC).
       const queryType = payload.query.trim().split(/\s+/)[0]?.toUpperCase();
       if (queryType !== "SELECT") {
         logger.warn("Rejected free-form write on /query", {
@@ -476,7 +476,8 @@ router.post(
             error:
               "Free-form writes are disabled on /query. Use named RPC: " +
               "/rpc/insert-trade, /rpc/upsert-position, /rpc/insert-signal, " +
-              "/rpc/insert-system-log",
+              "/rpc/insert-system-log. Prefer /rpc/list-signals and " +
+              "/rpc/list-system-logs for those reads.",
             code: "USE_NAMED_RPC",
           },
           410
@@ -894,10 +895,14 @@ router.get(
   [requireReadAuth]
 );
 
-// ── Named RPC write endpoints ──────────────────────────────────────
-// Prefer these over free-form /query for internal writers. Fixed SQL
-// templates eliminate injection surface and keep the table allowlist
-// implicit in the route.
+// ── Named RPC endpoints ────────────────────────────────────────────
+// Prefer fixed-template /rpc/* over free-form /query for hot paths
+// (both writes and common list reads). Templates eliminate injection
+// surface and keep the table allowlist implicit in the route.
+// Free-form POST /query remains available for ad-hoc SELECTs.
+
+const MAX_RPC_LIST_LIMIT = 100;
+const MAX_RPC_LIST_OFFSET = 10_000;
 
 async function rpcJsonBody(
   request: Request
@@ -920,6 +925,91 @@ async function rpcJsonBody(
     };
   }
   return { ok: true, value: parsed.value as Record<string, unknown> };
+}
+
+/**
+ * Parse bound limit/offset from a JSON body or URL search params.
+ * Caps limit at MAX_RPC_LIST_LIMIT and offset at MAX_RPC_LIST_OFFSET.
+ */
+function parseListPagination(
+  source: Record<string, unknown> | URLSearchParams,
+  defaultLimit: number
+):
+  | { ok: true; limit: number; offset: number }
+  | { ok: false; response: Response } {
+  const rawLimit =
+    source instanceof URLSearchParams
+      ? source.get("limit")
+      : source.limit;
+  const rawOffset =
+    source instanceof URLSearchParams
+      ? source.get("offset")
+      : source.offset;
+
+  let limit = defaultLimit;
+  if (rawLimit !== null && rawLimit !== undefined && rawLimit !== "") {
+    const n =
+      typeof rawLimit === "number" ? rawLimit : parseInt(String(rawLimit), 10);
+    if (!Number.isFinite(n) || n < 1) {
+      return {
+        ok: false,
+        response: Errors.badRequest(
+          `Invalid limit (must be 1-${MAX_RPC_LIST_LIMIT})`
+        ),
+      };
+    }
+    limit = Math.min(Math.floor(n), MAX_RPC_LIST_LIMIT);
+  }
+
+  let offset = 0;
+  if (rawOffset !== null && rawOffset !== undefined && rawOffset !== "") {
+    const n =
+      typeof rawOffset === "number"
+        ? rawOffset
+        : parseInt(String(rawOffset), 10);
+    if (!Number.isFinite(n) || n < 0) {
+      return {
+        ok: false,
+        response: Errors.badRequest(
+          `Invalid offset (must be 0-${MAX_RPC_LIST_OFFSET})`
+        ),
+      };
+    }
+    offset = Math.min(Math.floor(n), MAX_RPC_LIST_OFFSET);
+  }
+
+  return { ok: true, limit, offset };
+}
+
+async function parseListRpcParams(
+  request: Request,
+  defaultLimit: number
+): Promise<
+  | { ok: true; limit: number; offset: number }
+  | { ok: false; response: Response }
+> {
+  if (request.method === "GET") {
+    return parseListPagination(new URL(request.url).searchParams, defaultLimit);
+  }
+  // POST: empty body is allowed (defaults); otherwise JSON object
+  if (!request.body) {
+    return parseListPagination({}, defaultLimit);
+  }
+  const contentType = request.headers.get("Content-Type") || "";
+  // Allow POST with no JSON when Content-Type is missing/empty (defaults)
+  if (!contentType.includes("application/json")) {
+    const contentLength = request.headers.get("Content-Length");
+    if (!contentLength || contentLength === "0") {
+      return parseListPagination({}, defaultLimit);
+    }
+    return {
+      ok: false,
+      response: Errors.badRequest("Content-Type must be application/json"),
+    };
+  }
+  const body = await rpcJsonBody(request);
+  if (!body.ok) return body;
+  return parseListPagination(body.value, defaultLimit);
 }
 
 /** POST /rpc/insert-trade — insert a executed trade row */
@@ -1107,6 +1197,80 @@ router.post(
   },
   [requireWriteAuth]
 );
+
+// ── Named RPC list (read) endpoints ────────────────────────────────
+// Prefer these over free-form /query for trade-worker signal/log reads.
+// Fixed SELECT templates + bound limit/offset only (max limit 100).
+
+async function handleListSignals(
+  request: Request,
+  env: Env
+): Promise<Response> {
+  const pagination = await parseListRpcParams(request, 10);
+  if (!pagination.ok) return pagination.response;
+  const { limit, offset } = pagination;
+  try {
+    const result = await env.DB.prepare(
+      `SELECT signal_id, timestamp, symbol, signal_type, source, processed_at
+       FROM trade_signals
+       ORDER BY processed_at DESC
+       LIMIT ? OFFSET ?`
+    )
+      .bind(limit, offset)
+      .all();
+    if (!result.success) {
+      throw new Error(result.error || "list-signals failed");
+    }
+    return createJsonResponse({
+      success: true,
+      results: result.results || [],
+      limit,
+      offset,
+    });
+  } catch (error) {
+    logger.error("rpc/list-signals failed", { error: toError(error) });
+    return Errors.internal(toError(error));
+  }
+}
+
+/** GET|POST /rpc/list-signals — recent trade_signals (bound limit/offset) */
+router.get("/rpc/list-signals", handleListSignals, [requireReadAuth]);
+router.post("/rpc/list-signals", handleListSignals, [requireReadAuth]);
+
+async function handleListSystemLogs(
+  request: Request,
+  env: Env
+): Promise<Response> {
+  const pagination = await parseListRpcParams(request, 20);
+  if (!pagination.ok) return pagination.response;
+  const { limit, offset } = pagination;
+  try {
+    const result = await env.DB.prepare(
+      `SELECT id, timestamp, level, service, message, details
+       FROM system_logs
+       ORDER BY timestamp DESC
+       LIMIT ? OFFSET ?`
+    )
+      .bind(limit, offset)
+      .all();
+    if (!result.success) {
+      throw new Error(result.error || "list-system-logs failed");
+    }
+    return createJsonResponse({
+      success: true,
+      results: result.results || [],
+      limit,
+      offset,
+    });
+  } catch (error) {
+    logger.error("rpc/list-system-logs failed", { error: toError(error) });
+    return Errors.internal(toError(error));
+  }
+}
+
+/** GET|POST /rpc/list-system-logs — recent system_logs (bound limit/offset) */
+router.get("/rpc/list-system-logs", handleListSystemLogs, [requireReadAuth]);
+router.post("/rpc/list-system-logs", handleListSystemLogs, [requireReadAuth]);
 
 export default {
   fetch: withRequestLog(
