@@ -477,8 +477,8 @@ router.post(
             error:
               "Free-form writes are disabled on /query. Use named RPC: " +
               "/rpc/insert-trade, /rpc/upsert-position, /rpc/insert-signal, " +
-              "/rpc/insert-system-log. Prefer /rpc/list-signals and " +
-              "/rpc/list-system-logs for those reads.",
+              "/rpc/insert-system-log. Prefer /rpc/list-signals, " +
+              "/rpc/list-system-logs, and /rpc/list-open-positions for those reads.",
             code: "USE_NAMED_RPC",
           },
           410
@@ -808,8 +808,12 @@ async function handleGetBalances(env: Env, logger: Logger): Promise<Response> {
 
 async function handleGetPositions(env: Env, logger: Logger): Promise<Response> {
   try {
+    // Fixed column list (no SELECT *) — same shape as /rpc/list-open-positions
     const positionsData = await env.DB.prepare(
-      "SELECT * FROM positions WHERE status = 'OPEN' ORDER BY updated_at DESC"
+      `SELECT id, exchange, symbol, side, size, status, updated_at
+       FROM positions
+       WHERE status = 'OPEN'
+       ORDER BY updated_at DESC`
     ).all();
 
     return createJsonResponse({
@@ -1272,6 +1276,91 @@ async function handleListSystemLogs(
 /** GET|POST /rpc/list-system-logs — recent system_logs (bound limit/offset) */
 router.get("/rpc/list-system-logs", handleListSystemLogs, [requireReadAuth]);
 router.post("/rpc/list-system-logs", handleListSystemLogs, [requireReadAuth]);
+
+/**
+ * GET|POST /rpc/list-open-positions — OPEN positions (fixed SQL).
+ * Optional exchange filter via query/body `exchange` (alphanumeric + _- only).
+ * Prefer this over free-form /query for reconcile / trade-worker fallbacks.
+ */
+async function handleListOpenPositions(
+  request: Request,
+  env: Env
+): Promise<Response> {
+  let exchange: string | undefined;
+  try {
+    if (request.method === "GET") {
+      const ex = new URL(request.url).searchParams.get("exchange");
+      if (ex != null && ex.trim() !== "") exchange = ex.trim();
+    } else {
+      const body = (await request.json().catch(() => null)) as {
+        exchange?: unknown;
+      } | null;
+      if (body && typeof body.exchange === "string" && body.exchange.trim()) {
+        exchange = body.exchange.trim();
+      }
+    }
+  } catch {
+    return Errors.badRequest("Invalid request for list-open-positions");
+  }
+
+  if (exchange !== undefined) {
+    // Reject injection-ish tokens; exchanges are short identifiers.
+    if (
+      exchange.length > 32 ||
+      !/^[A-Za-z0-9_-]+$/.test(exchange) ||
+      exchange.includes("__proto__")
+    ) {
+      return Errors.badRequest("Invalid exchange filter");
+    }
+  }
+
+  try {
+    if (exchange) {
+      const result = await env.DB.prepare(
+        `SELECT id, exchange, symbol, side, size, status, updated_at
+         FROM positions
+         WHERE status = 'OPEN' AND exchange = ?
+         ORDER BY updated_at DESC`
+      )
+        .bind(exchange)
+        .all();
+      if (!result.success) {
+        throw new Error(result.error || "list-open-positions failed");
+      }
+      return createJsonResponse({
+        success: true,
+        results: result.results || [],
+        positions: result.results || [],
+        exchange,
+      });
+    }
+
+    const result = await env.DB.prepare(
+      `SELECT id, exchange, symbol, side, size, status, updated_at
+       FROM positions
+       WHERE status = 'OPEN'
+       ORDER BY updated_at DESC`
+    ).all();
+    if (!result.success) {
+      throw new Error(result.error || "list-open-positions failed");
+    }
+    return createJsonResponse({
+      success: true,
+      results: result.results || [],
+      positions: result.results || [],
+    });
+  } catch (error) {
+    logger.error("rpc/list-open-positions failed", { error: toError(error) });
+    return Errors.internal(toError(error));
+  }
+}
+
+router.get("/rpc/list-open-positions", handleListOpenPositions, [
+  requireReadAuth,
+]);
+router.post("/rpc/list-open-positions", handleListOpenPositions, [
+  requireReadAuth,
+]);
 
 export default {
   fetch: withRequestLog(

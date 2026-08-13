@@ -1470,6 +1470,90 @@ describe("D1 Worker", () => {
     expect(response.status).toBe(401);
   });
 
+  test("POST /rpc/list-open-positions returns open rows", async () => {
+    const rows = [
+      {
+        id: "binance:BTCUSDT:LONG",
+        exchange: "binance",
+        symbol: "BTCUSDT",
+        side: "LONG",
+        size: 0.1,
+        status: "OPEN",
+        updated_at: 1,
+      },
+    ];
+    mockPreparedStatement = createMockPreparedStatement({
+      allResult: { success: true, error: null, results: rows },
+    });
+    mockDB = createMockDB(mockPreparedStatement);
+    mockEnv = createMockEnv(mockDB, mockKV);
+
+    const request = new Request(
+      "https://d1-worker.workers.dev/rpc/list-open-positions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
+        },
+        body: JSON.stringify({}),
+      }
+    );
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as any;
+    expect(data.success).toBe(true);
+    expect(data.results).toEqual(rows);
+    expect(data.positions).toEqual(rows);
+  });
+
+  test("GET /rpc/list-open-positions filters by exchange", async () => {
+    mockPreparedStatement = createMockPreparedStatement({
+      allResult: { success: true, error: null, results: [] },
+    });
+    mockDB = createMockDB(mockPreparedStatement);
+    mockEnv = createMockEnv(mockDB, mockKV);
+
+    const request = new Request(
+      "https://d1-worker.workers.dev/rpc/list-open-positions?exchange=bybit",
+      {
+        method: "GET",
+        headers: { "X-Internal-Auth-Key": TEST_INTERNAL_KEY },
+      }
+    );
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(200);
+    expect(mockPreparedStatement.bind).toHaveBeenCalledWith("bybit");
+  });
+
+  test("POST /rpc/list-open-positions rejects bad exchange filter", async () => {
+    const request = new Request(
+      "https://d1-worker.workers.dev/rpc/list-open-positions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Internal-Auth-Key": TEST_INTERNAL_KEY,
+        },
+        body: JSON.stringify({ exchange: "binance; drop table" }),
+      }
+    );
+    const response = await d1Worker.fetch(
+      request as any,
+      mockEnv as any,
+      createMockCtx() as any
+    );
+    expect(response.status).toBe(400);
+  });
+
   test("batch rejects empty statements array", async () => {
     const request = new Request("https://d1-worker.workers.dev/batch", {
       method: "POST",
